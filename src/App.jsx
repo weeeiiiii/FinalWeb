@@ -3,6 +3,8 @@ import LoginPage from './Login';
 import './App.css';
 import { tripsData, eventsData as initialEvents, placesData, currentUser as initialUser } from './ApiData';
 
+const API_HOST = "https://01da5078501d.ngrok-free.app";
+
 const EXPENSE_CATEGORIES = {
   food: { label: '餐飲', color: '#ff9800' },
   transport: { label: '交通', color: '#2196f3' },
@@ -12,14 +14,6 @@ const EXPENSE_CATEGORIES = {
   other: { label: '其他', color: '#9e9e9e' }
 };
 
-// 景點分類對應表
-const PLACE_CATEGORIES = {
-  attraction: '景點',
-  food: '美食',
-  hotel: '住宿',
-  shopping: '購物',
-  entertainment: '娛樂',
-};
 
 const getDaysArray = (start, end) => {
     const s = new Date(start);
@@ -33,7 +27,7 @@ const HeroSection = ({ onStart }) => (
   <div className="hero-section">
     <div className="hero-content-box">
       <div className="hero-title">
-        網頁名稱？
+        Travel Planner
       </div>
       <p className="hero-desc">
         Start planning your next journey!
@@ -44,22 +38,31 @@ const HeroSection = ({ onStart }) => (
     </div>
   </div>
 );
-// 珍藏頁面
+// 珍藏頁面 
 const FavoritesPage = ({ places, favorites, onToggleFavorite }) => {
   const [view, setView] = useState('saved');
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedPlace, setSelectedPlace] = useState(null);
+  const [placeUserData, setPlaceUserData] = useState({});
 
   const sourcePlaces = view === 'saved' 
     ? places.filter(p => favorites.includes(p.id)) 
     : places;
 
-  // 搜尋關鍵字過濾
   const displayPlaces = sourcePlaces.filter(p => 
     p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     p.city.toLowerCase().includes(searchTerm.toLowerCase()) ||
     p.country.toLowerCase().includes(searchTerm.toLowerCase()) ||
     p.category.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const handleSaveData = (placeId, data) => {
+    setPlaceUserData(prev => ({
+      ...prev,
+      [placeId]: data
+    }));
+    setSelectedPlace(null); 
+  };
 
   return (
     <div className="container">
@@ -90,16 +93,9 @@ const FavoritesPage = ({ places, favorites, onToggleFavorite }) => {
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           style={{
-            width: '100%',
-            maxWidth: '500px',  
-            padding: '12px 20px',
-            fontSize: '1rem',
-            borderRadius: '30px', 
-            border: '1px solid #ddd',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
-            outline: 'none',
-            transition: 'all 0.2s',
-            background: 'white'
+            width: '100%', maxWidth: '500px', padding: '12px 20px', fontSize: '1rem',
+            borderRadius: '30px', border: '1px solid #ddd', boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+            outline: 'none', transition: 'all 0.2s', background: 'white'
           }}
           onFocus={(e) => e.target.style.boxShadow = '0 2px 12px rgba(0,0,0,0.1)'}
           onBlur={(e) => e.target.style.boxShadow = '0 2px 8px rgba(0,0,0,0.05)'}
@@ -117,28 +113,115 @@ const FavoritesPage = ({ places, favorites, onToggleFavorite }) => {
         <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(250px, 1fr))', gap:'20px'}}>
           {displayPlaces.map(place => {
             const isFav = favorites.includes(place.id);
+            const userData = placeUserData[place.id]; 
+
             return (
-              <div key={place.id} className="trip-card" style={{cursor:'default'}}>
-                <div style={{padding:'20px'}}>
+              <div 
+                key={place.id} 
+                className="trip-card" 
+                onClick={() => setSelectedPlace(place)}
+                style={{cursor:'pointer', position:'relative', transition: 'transform 0.2s', border: '1px solid #eee'}}
+              >
+                <div style={{padding:'30px'}}>
                   <div style={{display:'flex', justifyContent:'space-between', alignItems:'start'}}>
                     <h3 style={{margin:0, fontSize:'1.1rem'}}>{place.name}</h3>
                     <button 
-                      onClick={() => onToggleFavorite(place.id)}
-                      style={{background:'none', border:'none', cursor:'pointer', fontSize:'1.5rem', color: isFav ? '#e74c3c' : '#ccc', transition:'transform 0.2s'}}
+                      onClick={(e) => {
+                        e.stopPropagation(); 
+                        onToggleFavorite(place.id);
+                      }}
+                      style={{background:'none', border:'none', cursor:'pointer', fontSize:'1.5rem', color: isFav ? '#e74c3c' : '#ccc', transition:'transform 0.2s', zIndex: 2}}
                     >
                       {isFav ? '❤️' : '🤍'}
                     </button>
                   </div>
-                  <p style={{color:'#666', fontSize:'0.9rem', margin:'5px 0'}}>📍 {place.city}, {place.country}</p>
-                  <span style={{background:'#f0f0f0', padding:'2px 8px', borderRadius:'4px', fontSize:'0.8rem', color:'#555', marginTop:'10px', display:'inline-block'}}>
-                    {PLACE_CATEGORIES[place.category] || place.category}
-                  </span>
+                  
+                  {userData && (
+                     <div style={{marginTop: '10px', fontSize: '0.85rem', color: '#888', background:'#f9f9f9', padding:'8px', borderRadius:'6px'}}>
+                        {userData.rating > 0 && <span style={{color: '#f39c12', marginRight:'5px'}}>★ {userData.rating}</span>}
+                        {userData.note && <span>📝 已有記錄</span>}
+                     </div>
+                  )}
                 </div>
               </div>
             );
           })}
         </div>
       )}
+
+      {selectedPlace && (
+        <PlaceDetailsModal 
+          place={selectedPlace}
+          initialData={placeUserData[selectedPlace.id]}
+          onSave={handleSaveData}
+          onClose={() => setSelectedPlace(null)}
+        />
+      )}
+    </div>
+  );
+};
+
+// 評分與備註的彈窗元件
+const PlaceDetailsModal = ({ place, initialData, onSave, onClose }) => {
+  const [rating, setRating] = useState(initialData?.rating || 0);
+  const [note, setNote] = useState(initialData?.note || '');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSave(place.id, { rating, note });
+  };
+
+  return (
+    <div className="modal-overlay" style={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000
+    }}>
+      <div className="modal-content" style={{
+        background: 'white', padding: '30px', borderRadius: '12px', width: '90%', maxWidth: '400px',
+        boxShadow: '0 5px 15px rgba(0,0,0,0.2)', animation: 'slideIn 0.3s ease-out'
+      }}>
+        <h3 style={{marginTop: 0, marginBottom: '20px'}}>{place.name} - 旅遊評價與筆記</h3>
+        
+        <form onSubmit={handleSubmit}>
+          <div className="form-group" style={{marginBottom: '20px'}}>
+            <label style={{display:'block', marginBottom:'8px', fontWeight:'bold'}}>您的評分</label>
+            <div style={{display: 'flex', gap: '5px', cursor: 'pointer'}}>
+              {[1, 2, 3, 4, 5].map((star) => (
+                <span 
+                  key={star} 
+                  onClick={() => setRating(star)}
+                  style={{
+                    fontSize: '2rem', 
+                    color: star <= rating ? '#FFD700' : '#ddd', 
+                    transition: 'color 0.2s'
+                  }}
+                >
+                  ★
+                </span>
+              ))}
+              <span style={{marginLeft:'10px', lineHeight:'3rem', color:'#666', fontSize:'0.9rem'}}>
+                {rating > 0 ? `${rating} 顆星` : '尚未評分'}
+              </span>
+            </div>
+          </div>
+
+          <div className="form-group" style={{marginBottom: '20px'}}>
+            <label style={{display:'block', marginBottom:'8px', fontWeight:'bold'}}>備註</label>
+            <textarea 
+              rows="4"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="寫下這次旅遊感想..."
+              style={{width: '100%', padding:'10px', borderRadius:'8px', border:'1px solid #ddd'}}
+            />
+          </div>
+
+          <div className="modal-actions" style={{display:'flex', justifyContent:'flex-end', gap:'10px'}}>
+            <button type="button" onClick={onClose} className="btn-secondary" style={{padding:'8px 16px', border:'1px solid #ddd', background:'white', borderRadius:'6px', cursor:'pointer'}}>取消</button>
+            <button type="submit" className="btn-primary" style={{padding:'8px 16px', border:'none', background:'#333', color:'white', borderRadius:'6px', cursor:'pointer'}}>儲存</button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 };
@@ -210,14 +293,24 @@ const ExpensesPage = ({ trips, allEvents }) => {
 const ProfilePage = ({ user, trips, favCount, onUpdateUser, onSelectTrip, onNavigateToFavorites }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({ name: user.name, email: user.email });
+  const [isSaving, setIsSaving] = useState(false); // 新增：防止重複點擊
   
   // 行程列表視窗
   const [isTripsListOpen, setIsTripsListOpen] = useState(false);
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
-    onUpdateUser(formData);
-    setIsEditing(false);
+    setIsSaving(true); // 開始載入
+
+    // 呼叫 App.jsx 傳進來的 API 更新函式，並等待結果
+    const success = await onUpdateUser(formData);
+    
+    setIsSaving(false); // 結束載入
+
+    // 只有在 API 成功時，才關閉編輯模式
+    if (success) {
+      setIsEditing(false);
+    }
   };
 
   const handleCancel = () => {
@@ -338,7 +431,7 @@ const TripSetupModal = ({ initialData, onSave, onCancel }) => {
              </div>
              <div style={{flex:1}}>
                 <label>時間</label>
-                <input type="time" value={formData.start_time} onChange={e => setFormData({...formData, start_time: e.target.value})} />
+                <input type="time" value={formData.start_time} onChange={e => setFormData({...formData, start_time: e.target.value})} required/>
              </div>
           </div>
           <div className="form-group" style={{display:'flex', gap:'10px'}}>
@@ -348,12 +441,12 @@ const TripSetupModal = ({ initialData, onSave, onCancel }) => {
              </div>
              <div style={{flex:1}}>
                 <label>時間</label>
-                <input type="time" value={formData.end_time} onChange={e => setFormData({...formData, end_time: e.target.value})} />
+                <input type="time" value={formData.end_time} onChange={e => setFormData({...formData, end_time: e.target.value})} required/>
              </div>
           </div>
           <div className="form-group">
             <label>總預算</label>
-            <input type="number" value={formData.budget} onChange={e => setFormData({...formData, budget: e.target.value})} placeholder="例如: 30000"/>
+            <input type="number" value={formData.budget} onChange={e => setFormData({...formData, budget: e.target.value})} required placeholder="例如: 30000"/>
           </div>
           <div className="form-group">
             <label>備註</label>
@@ -387,7 +480,7 @@ const EventForm = ({ tripId, currentDay, initialData, onSave, onCancel }) => {
              <div style={{flex:1}}><label>開始</label><input type="time" value={formData.start_time} onChange={e=>setFormData({...formData, start_time:e.target.value})}/></div>
              <div style={{flex:1}}><label>結束</label><input type="time" value={formData.end_time} onChange={e=>setFormData({...formData, end_time:e.target.value})}/></div>
           </div>
-          <div className="form-group"><label>地點</label><input value={formData.place_name} onChange={e=>setFormData({...formData, place_name:e.target.value})} placeholder="例如: 新宿東口店"/></div>
+          <div className="form-group"><label>地點</label><input value={formData.place_name} onChange={e=>setFormData({...formData, place_name:e.target.value})} required placeholder="例如: 新宿東口店"/></div>
           <div className="form-group" style={{display:'flex', gap:'10px'}}>
             <div style={{flex:1}}><label>花費金額 ($)</label><input type="number" value={formData.cost} onChange={e=>{
               const val = e.target.value;
@@ -620,11 +713,47 @@ function App() {
     setPlanningTrip(newTrip);
   };
 
-  // 更新使用者資料
-  const handleUpdateUser = (updatedData) => {
-    const newUser = { ...user, ...updatedData };
-    localStorage.setItem('travel_app_user', JSON.stringify(newUser)); 
-    setUser(newUser);
+  // 更新使用者資料(帶修改)
+  const handleUpdateUser = async (updatedData) => {
+    try {
+      if (!user || !user.id) {
+        alert("找不到使用者 ID，請重新登入");
+        return;
+      }
+
+      const url = `${API_HOST}/api/users/${user.id}`;
+      
+      console.log("正在呼叫 API:", url);
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updatedData)
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || '更新失敗');
+      }
+
+      console.log("資料庫更新成功:", data);
+      
+      // 更新前端
+      const newUser = { ...user, ...updatedData }; 
+      localStorage.setItem('travel_app_user', JSON.stringify(newUser)); 
+      setUser(newUser);
+      
+      alert('個人資料修改成功！');
+      return true;
+
+    } catch (error) {
+      console.error("更新錯誤:", error);
+      alert(`修改失敗: ${error.message}`);
+      return false;
+    }
   };
 
   const renderHome = () => (
