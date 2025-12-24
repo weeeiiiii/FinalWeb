@@ -92,7 +92,7 @@ const LoginPage = ({ onLogin }) => {
             localStorage.setItem('travel_app_user', JSON.stringify(data.user));
         }
 
-        // C. 通知 App 進入主畫面
+        // C. 通知 App 進入主畫面 
         onLogin(data.user);
 
       } else {
