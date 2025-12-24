@@ -713,7 +713,7 @@ function App() {
     setPlanningTrip(newTrip);
   };
 
-  // 更新使用者資料(帶修改)
+  // 更新使用者資料(待修改)
   const handleUpdateUser = async (updatedData) => {
     try {
       if (!user || !user.id) {
