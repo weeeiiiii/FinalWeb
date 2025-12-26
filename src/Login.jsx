@@ -67,44 +67,40 @@ const LoginPage = ({ onLogin }) => {
         body: JSON.stringify(formData) 
       });
 
-      const data = await response.json();
+      const result = await response.json();
 
-      // 1. 先判斷後端是否回傳錯誤 (例如密碼錯)
-      if (!response.ok) {
-        alert(data.message || '操作失敗');
-        return;
-      }
+     if (result.code === "200") {
+        
+        const responseData = result.data; 
 
-      // 2. 判斷是登入還是註冊
-      if (isLoginMode) {
-        // ★ 登入成功：這裡最重要！要把 Token 存起來
-        console.log('登入成功:', data);
+        if (isLoginMode) {
+          console.log('登入成功:', responseData);
+          alert('登入成功！');
 
-        // A. 存 Token (這是給 handleUpdateUser 修改資料時用的)
-        // 假設後端回傳結構是 { token: "...", user: { ... } }
-        if (data.token) {
-            localStorage.setItem('travel_app_user', data.token); 
+          // 存 Token 
+          if (responseData.token) {
+              localStorage.setItem('travel_app_token', responseData.token); 
+          }
+
+          // 存 User 資料 
+          const userToSave = responseData.user || responseData; 
+          
+          if (userToSave) {
+              localStorage.setItem('travel_app_user', JSON.stringify(userToSave));
+          }
+
+          // 通知 App 進入主畫面
+          onLogin(userToSave);
+
+        } else {
+          console.log('註冊成功:', result);
+          alert(`註冊成功！HiHi ${formData.name} 請使用剛註冊的帳號登入。`);
+          setIsLoginMode(true);
         }
-
-        // B. 存 User 資料 (這是給 App.jsx 初始化 user 狀態用的)
-        // 注意：你 App.jsx 裡讀取的 key 是 'travel_app_user'
-        if (data.user) {
-            localStorage.setItem('travel_app_user', JSON.stringify(data.user));
-        }
-
-        // C. 通知 App 進入主畫面 
-        onLogin(data.user);
 
       } else {
-        // ==========================================
-        // ★ 註冊成功
-        // ==========================================
-        console.log('註冊成功:', data);
-        alert(`註冊成功！HiHi ${formData.name} 請使用剛註冊的帳號登入。`);
-        
-        // 切換回登入模式讓使用者登入
-        setIsLoginMode(true);
-        // (註冊通常不自動登入，所以這裡不用存 localStorage)
+        // 處理錯誤 
+        alert(result.message || '操作失敗 (帳號或密碼錯誤)');
       }
 
     } catch (error) {

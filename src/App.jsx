@@ -1,9 +1,37 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import LoginPage from './Login';
 import './App.css';
 import { tripsData, eventsData as initialEvents, placesData, currentUser as initialUser } from './ApiData';
 
 const API_HOST = "https://01da5078501d.ngrok-free.app";
+
+// 使用 Date 物件來解析後端傳來的複雜時間格式 (GMT)
+const splitDateTime = (dtString) => {
+  if (!dtString) return { date: '', time: '' };
+
+  // 讓瀏覽器幫我們解析時間
+  const dateObj = new Date(dtString);
+
+  // 如果解析失敗 (Invalid Date)，回傳空值以免當機
+  if (isNaN(dateObj.getTime())) {
+    console.warn("無法解析日期:", dtString);
+    return { date: '', time: '' };
+  }
+
+  // 轉成 YYYY-MM-DD
+  const year = dateObj.getFullYear();
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const day = String(dateObj.getDate()).padStart(2, '0');
+  
+  // 轉成 HH:mm
+  const hours = String(dateObj.getHours()).padStart(2, '0');
+  const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+
+  return {
+    date: `${year}-${month}-${day}`,
+    time: `${hours}:${minutes}`
+  };
+};
 
 const EXPENSE_CATEGORIES = {
   food: { label: '餐飲', color: '#ff9800' },
@@ -667,7 +695,7 @@ const TripPlanner = ({ trip, onBack, onUpdateTrip, onDeleteTrip, allEvents, setA
 
 function App() {
   const [activeTab, setActiveTab] = useState('HOME');
-  const [trips, setTrips] = useState(tripsData);
+  const [trips, setTrips] = useState([]);
   const [allEvents, setAllEvents] = useState(initialEvents);
   const [planningTrip, setPlanningTrip] = useState(null);
   const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
@@ -697,57 +725,60 @@ function App() {
     setFavorites(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
-  const handleCreateTrip = (formData) => {
-    const newTrip = {
-      id: Date.now(), 
-      user_id: user.id,
-      ...formData,
-      details: { 
-        total_budget: parseInt(formData.budget) || 0, 
-        actual_spent: 0, 
-        cover_photo_url: 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&w=1000&q=80' 
-      }
-    };
-    setTrips([newTrip, ...trips]);
-    setIsSetupModalOpen(false);
-    setPlanningTrip(newTrip);
-  };
-
-  // 更新使用者資料(待修改)  
   const handleUpdateUser = async (updatedData) => {
     try {
+      // 1. 檢查目前是否已登入 (要有 user.id)
       if (!user || !user.id) {
         alert("找不到使用者 ID，請重新登入");
         return;
       }
 
-      const url = `${API_HOST}/api/users/${user.id}`;
+      // 2. 取出 Token (雖然這段 Python 代碼沒顯示驗證 token，但帶著比較保險)
+      const token = localStorage.getItem('travel_app_token');
+      
+      // 3. 設定 API 網址
+      const url = 'https://01da5078501d.ngrok-free.app/api/users/User'; 
       
       console.log("正在呼叫 API:", url);
 
+      // 4. ★ 關鍵修正：組合要傳送的資料
+      const payload = {
+          id: user.id,              // 必填：告訴後端要改誰
+          name: updatedData.name,   // 必填：新的名字
+      };
+
       const response = await fetch(url, {
-        method: 'POST',
+        method: 'POST', // ★ 配合後端改成 POST
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : '' // 帶著 Token 以防萬一
         },
-        body: JSON.stringify(updatedData)
+        body: JSON.stringify(payload) // 傳送包含 id 的完整資料
       });
 
-      const data = await response.json();
+      const result = await response.json();
 
-      if (!response.ok) {
-        throw new Error(data.message || '更新失敗');
+      // 5. 判斷後端回傳結果
+      // 後端成功時回傳 code: "200"
+      if (result.code === "200") {
+        console.log("資料庫更新成功:", result);
+
+        // A. 更新前端 React State
+        // 因為後端只回傳 name，我們手動把前端的資料更新
+        const newUser = { ...user, ...updatedData }; 
+        setUser(newUser);
+
+        // B. 更新 LocalStorage (保持登入狀態資料最新)
+        localStorage.setItem('travel_app_user', JSON.stringify(newUser)); 
+        
+        alert('個人資料修改成功！');
+        return true;
+
+      } else {
+        // 失敗時 (例如 code: "1003")
+        // 顯示後端回傳的 message，例如 "資料修改失敗"
+        throw new Error(result.message || '更新失敗');
       }
-
-      console.log("資料庫更新成功:", data);
-      
-      // 更新前端
-      const newUser = { ...user, ...updatedData }; 
-      localStorage.setItem('travel_app_user', JSON.stringify(newUser)); 
-      setUser(newUser);
-      
-      alert('個人資料修改成功！');
-      return true;
 
     } catch (error) {
       console.error("更新錯誤:", error);
@@ -786,24 +817,210 @@ function App() {
     return <LoginPage onLogin={handleLoginSuccess} />;
   }
 
-  // 行程更新
-  const handleUpdateTrip = (updatedData) => {
-    const updatedTrip = {
-      ...planningTrip, 
-      ...updatedData,  
-      details: {
-        ...planningTrip.details,
-        total_budget: parseInt(updatedData.budget) || 0
-      }
-    };
+  // 1. 讀取行程 (GET) - 配合後端 datetime 格式
+  const fetchUserTrips = async (userId) => {
+    try {
+      console.log(`正在抓取使用者 ${userId} 的行程...`);
+      const response = await fetch(`${API_HOST}/api/trips/${userId}`, {
+        method: 'GET',
+        headers: {
+            "ngrok-skip-browser-warning": "true", 
+            "Content-Type": "application/json"
+        }
+      });
 
-    setTrips(prev => prev.map(t => t.id === planningTrip.id ? updatedTrip : t));
-    setPlanningTrip(updatedTrip);
+      // 先讀成純文字 (Text)，不要直接轉 JSON
+      const textData = await response.text();
+
+      // 手動解析 JSON
+      let resData;
+      try {
+        resData = JSON.parse(textData);
+      } catch (e) {
+        console.error("解析失敗：後端回傳的不是 JSON，可能是 HTML 錯誤頁面或 Ngrok 警告");
+        setTrips([]);
+        return [];
+      }
+
+      if (resData.code === "200" && Array.isArray(resData.data)) {
+        
+        const formattedTrips = resData.data.map(dbTrip => {
+          if (!dbTrip) return null;
+
+          const getVal = (obj, key) => obj[key] || obj[key.toLowerCase()] || obj[key.toUpperCase()];
+          
+          const rawStart = getVal(dbTrip, 'start_datetime');
+          const rawEnd = getVal(dbTrip, 'end_datetime');
+          const rawTitle = getVal(dbTrip, 'title');
+          const rawNote = getVal(dbTrip, 'note');
+          const rawBudget = getVal(dbTrip, 'total_budget');
+          const rawUserId = getVal(dbTrip, 'Users_id') || getVal(dbTrip, 'user_id');
+
+          const start = splitDateTime(rawStart);
+          const end = splitDateTime(rawEnd);
+
+          return {
+            id: dbTrip.id,
+            user_id: rawUserId, 
+            title: rawTitle || '未命名行程',
+            note: rawNote || '',
+            start_date: start.date,
+            start_time: start.time,
+            end_date: end.date,
+            end_time: end.time,
+            details: {
+              total_budget: rawBudget || 0,
+              actual_spent: 0,
+              cover_photo_url: 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&w=1000&q=80'
+            }
+          };
+        }).filter(t => t !== null); 
+
+        console.log("成功轉換後的資料:", formattedTrips);
+        setTrips(formattedTrips); 
+        return formattedTrips;    
+      } else {
+        console.warn("後端回傳失敗或資料為空:", resData);
+        setTrips([]); 
+        return [];
+      }
+    } catch (error) {
+      console.error("☠️ 連線嚴重錯誤:", error);
+      setTrips([]); 
+      return [];
+    }
   };
 
-  // 刪除行程
-  const handleDeleteTrip = (id) => {
-    setTrips(prev => prev.filter(t => t.id !== id));
+  useEffect(() => {
+    // 只要 user 狀態存在且有 ID，就去抓資料
+    if (user && user.id) {
+      fetchUserTrips(user.id);
+    } else {
+      setTrips([]);
+    }
+  }, [user]);
+
+
+
+  // 2. 建立行程 (POST)
+
+  const handleCreateTrip = async (formData) => {
+  try {
+    // 1. 發送資料給後端 (POST)
+    const response = await fetch(`${API_HOST}/api/trips/${user.id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: formData.title,
+        start_date: formData.start_date,
+        start_time: formData.start_time || '00:00', // 若沒填給預設值
+        end_date: formData.end_date,
+        end_time: formData.end_time || '00:00',
+        note: formData.note,
+        total_budget: parseInt(formData.budget) || 0
+      })
+    });
+
+    const resData = await response.json();
+
+    if (resData.code === "200") {
+      // 2. 建立成功！
+      const freshTrips = await fetchUserTrips(user.id);
+
+      // 3. 找出剛剛建立的那個行程 
+      const newTripFromDB = freshTrips.find(t => t.title === formData.title); 
+      
+      // 4. 更新前端狀態
+      setIsSetupModalOpen(false); // 關閉視窗
+
+      if (newTripFromDB) {
+        setPlanningTrip(newTripFromDB); 
+      } else {
+        alert("行程建立成功！請在列表中點選查看");
+      }
+
+    } else {
+      alert(`建立失敗: ${resData.message}`);
+    }
+  } catch (error) {
+    console.error("建立行程錯誤:", error);
+    alert("連線失敗，請稍後再試");
+  }
+};
+
+
+
+  // 3. 更新行程 (PUT)
+
+  // 這裡接到 TripPlanner 的 onUpdateTrip
+  const handleUpdateTrip = async (updatedData) => {
+    if (!planningTrip) return;
+
+    try {
+      // 對應後端: @trip_bp.route('/<int:trip_id>', methods=['PUT'])
+      const response = await fetch(`${API_HOST}/api/trips/${planningTrip.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: updatedData.title,
+          start_date: updatedData.start_date,
+          start_time: updatedData.start_time,
+          end_date: updatedData.end_date,
+          end_time: updatedData.end_time,
+          note: updatedData.note,
+          total_budget: parseInt(updatedData.budget) || 0
+        })
+      });
+
+      const resData = await response.json();
+
+      if (resData.code === "200") {
+        console.log("更新成功");
+        
+        // 更新前端畫面
+        const newTripData = {
+          ...planningTrip,
+          ...updatedData,
+          details: { ...planningTrip.details, total_budget: parseInt(updatedData.budget) || 0 }
+        };
+
+        // 1. 更新列表
+        setTrips(prev => prev.map(t => t.id === planningTrip.id ? newTripData : t));
+        // 2. 更新當前檢視
+        setPlanningTrip(newTripData);
+        
+        alert("行程修改已儲存");
+      } else {
+        alert(`更新失敗: ${resData.message}`);
+      }
+    } catch (error) {
+      console.error("更新行程錯誤:", error);
+    }
+  };
+
+
+
+  // 4. 刪除行程 (DELETE)
+
+  const handleDeleteTrip = async (tripId) => {
+    try {
+      const response = await fetch(`${API_HOST}/api/trips/${tripId}`, {
+        method: 'DELETE'
+      });
+      
+      const resData = await response.json();
+
+      if (resData.code === "200") {
+         setTrips(prev => prev.filter(t => t.id !== tripId));
+         if (planningTrip && planningTrip.id === tripId) {
+             setPlanningTrip(null);
+         }
+      } else {
+         alert(`刪除失敗: ${resData.message}`);
+      }
+    } catch (error) {
+      console.error("刪除行程錯誤:", error);
+    }
   };
 
   return (
