@@ -5,6 +5,7 @@ import { tripsData, eventsData as initialEvents, placesData, currentUser as init
 
 const API_HOST = "https://01da5078501d.ngrok-free.app";
 
+
 // 使用 Date 物件來解析後端傳來的複雜時間格式 (GMT)
 const splitDateTime = (dtString) => {
   if (!dtString) return { date: '', time: '' };
@@ -42,13 +43,6 @@ const EXPENSE_CATEGORIES = {
   other: { label: '其他', color: '#9e9e9e' }
 };
 
-
-const getDaysArray = (start, end) => {
-    const s = new Date(start);
-    const e = new Date(end);
-    const diffDays = Math.ceil(Math.abs(e - s) / (1000 * 60 * 60 * 24)) + 1; 
-    return Array.from({ length: diffDays }, (_, i) => i + 1);
-};
 
 // 主視覺
 const HeroSection = ({ onStart }) => (
@@ -528,31 +522,71 @@ const EventForm = ({ tripId, currentDay, initialData, onSave, onCancel }) => {
   );
 };
 
-const TripPlanner = ({ trip, onBack, onUpdateTrip, onDeleteTrip, allEvents, setAllEvents }) => {
-  const [currentDay, setCurrentDay] = useState(1);
+const TripPlanner = ({ trip, onBack, onUpdateTrip, onDeleteTrip, allEvents = [], onSaveEvent, onDeleteEvent }) => {
+  const [currentDay, setCurrentDay] = useState(() => {
+    try {
+      const savedDay = localStorage.getItem(`trip_${trip.id}_day`);
+      return savedDay ? parseInt(savedDay) : 1;
+    } catch (e) {
+      return 1;
+    }
+  });
   const [isEventFormOpen, setIsEventFormOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
   const [isEditTripModalOpen, setIsEditTripModalOpen] = useState(false);
 
-  const days = getDaysArray(trip.start_date, trip.end_date);
-  if (currentDay > days.length) setCurrentDay(1);
+  useEffect(() => {
+    if (trip && trip.id) {
+      localStorage.setItem(`trip_${trip.id}_day`, currentDay);
+    }
+  }, [currentDay, trip.id]);
 
-  const dayEvents = allEvents
-    .filter(e => e.trip_id === trip.id && e.day_no === currentDay)
-    .sort((a,b)=>a.start_time.localeCompare(b.start_time));
-  
-  const totalSpent = allEvents
-    .filter(e => e.trip_id === trip.id)
-    .reduce((sum, e) => sum + (e.cost || 0), 0);
-
-  const dailySpent = dayEvents.reduce((sum, e) => sum + (e.cost || 0), 0);
-
-  const handleSaveEvent = (data) => {
-    if(editingEvent) setAllEvents(prev => prev.map(e => e.id === editingEvent.id ? {...data, id: e.id} : e));
-    else setAllEvents(prev => [...prev, {...data, id: Date.now()}]);
-    setIsEventFormOpen(false);
+  // ★★★ 補上：日期計算函式 (原本你的程式碼缺了這段會報錯) ★★★
+  const getDaysArray = (s, e) => {
+    try {
+      if (!s || !e) return [1];
+      const start = new Date(s);
+      const end = new Date(e);
+      if (isNaN(start) || isNaN(end)) return [1];
+      const diff = Math.abs(end - start);
+      const days = Math.ceil(diff / (1000 * 60 * 60 * 24)) + 1;
+      return Array.from({ length: days }, (_, i) => i + 1);
+    } catch (err) {
+      return [1];
+    }
   };
 
+  // 計算天數陣列
+  const days = getDaysArray(trip?.start_date, trip?.end_date);
+  
+  // 防止切換行程時天數溢出
+  if (currentDay > days.length) setCurrentDay(1);
+
+  // 篩選當日活動並排序 (加上安全保護)
+  const dayEvents = (allEvents || [])
+    .filter(e => e.trip_id === trip.id && e.day_no === currentDay)
+    .sort((a,b) => (a.start_time || '').localeCompare(b.start_time || ''));
+  
+  // 計算總花費
+  const totalSpent = (allEvents || [])
+    .filter(e => e.trip_id === trip.id)
+    .reduce((sum, e) => sum + (Number(e.cost) || 0), 0);
+
+  // 計算當日花費
+  const dailySpent = dayEvents.reduce((sum, e) => sum + (Number(e.cost) || 0), 0);
+
+  // ==========================================
+  // ★ 修改 2: 改寫儲存邏輯 (呼叫後端 API)
+  // ==========================================
+  const handleSaveEventWrapper = async (data) => {
+    const success = await onSaveEvent(data);
+    if (success) {
+      setIsEventFormOpen(false);
+      setEditingEvent(null);
+    }
+  };
+
+  // 刪除整趟行程
   const handleDeleteThisTrip = () => {
     if (window.confirm(`確定要刪除「${trip.title}」嗎？刪除後無法復原。`)) {
       onDeleteTrip(trip.id);
@@ -560,16 +594,23 @@ const TripPlanner = ({ trip, onBack, onUpdateTrip, onDeleteTrip, allEvents, setA
     }
   };
 
+  // 日期顯示輔助函式
   const getDayDateString = (startDate, dayNumber) => {
-  const date = new Date(startDate);
-  date.setDate(date.getDate() + (dayNumber - 1)); //處理跨月分
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  const dd = String(date.getDate()).padStart(2, '0');
-  return `${mm}/${dd}`;
+    try {
+      const date = new Date(startDate);
+      date.setDate(date.getDate() + (dayNumber - 1));
+      const mm = String(date.getMonth() + 1).padStart(2, '0');
+      const dd = String(date.getDate()).padStart(2, '0');
+      return `${mm}/${dd}`;
+    } catch { return "--/--"; }
   };
 
+  // 安全取得預算
+  const budget = parseInt(trip.details?.total_budget || 0);
+
   return (
-    <div className="container">
+    <div className="container" style={{paddingBottom:'100px'}}>
+      {/* 上方導覽列與按鈕 */}
       <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px'}}>
         <button className="btn-back" onClick={onBack} style={{margin:0}}>← 返回行程列表</button>
         <div style={{display:'flex', gap:'10px'}}>
@@ -578,35 +619,23 @@ const TripPlanner = ({ trip, onBack, onUpdateTrip, onDeleteTrip, allEvents, setA
         </div>
       </div>
 
+      {/* 行程資訊卡片 */}
       <div style={{background:'white', padding:'25px', borderRadius:'12px', boxShadow:'0 2px 10px rgba(0,0,0,0.05)', marginBottom:'25px', border:'1px solid #eee'}}>
         <h1 style={{margin:'0 0 15px 0', fontSize:'2rem'}}>{trip.title}</h1>
         
         <div style={{display:'flex', flexWrap:'wrap', gap:'30px', color:'#333', fontSize:'1rem', marginBottom:'20px'}}>
-          <div>
-            <span style={{fontSize:'1.2rem', marginRight:'5px'}}></span> 
-            <strong>🗓️出發：</strong> {trip.start_date} 
-            {trip.start_time && <span style={{marginLeft:'10px', color:'#333'}}>{trip.start_time}</span>}
-          </div>
-          <div>
-            <span style={{fontSize:'1.2rem', marginRight:'5px'}}></span> 
-            <strong>回程：</strong> {trip.end_date} 
-            {trip.end_time && <span style={{marginLeft:'10px', color:'#333'}}>{trip.end_time}</span>}
-          </div>
+          <div><strong>🗓️出發：</strong> {trip.start_date} {trip.start_time && <span style={{marginLeft:'10px'}}>{trip.start_time}</span>}</div>
+          <div><strong>回程：</strong> {trip.end_date} {trip.end_time && <span style={{marginLeft:'10px'}}>{trip.end_time}</span>}</div>
         </div>
 
-        <div style={{
-          background:'#f8f9fa', 
-          padding:'15px 20px', 
-          borderRadius:'8px', 
-          display:'inline-flex', 
-          alignItems:'center', 
-          gap:'20px', 
-          border:'1px solid #eee',
-          marginBottom: '5px'
-        }}>
-           <div style={{fontSize:'1rem'}}>總預算: <b style={{fontSize:'1.1rem'}}>${parseInt(trip.details.total_budget).toLocaleString()}</b></div>
+        <div style={{background:'#f8f9fa', padding:'15px 20px', borderRadius:'8px', display:'inline-flex', alignItems:'center', gap:'20px', border:'1px solid #eee', marginBottom: '5px'}}>
+           <div style={{fontSize:'1rem'}}>總預算: <b style={{fontSize:'1.1rem'}}>${budget.toLocaleString()}</b></div>
            <div style={{height:'20px', width:'1px', background:'#ccc'}}></div>
-           <div style={{fontSize:'1rem'}}>目前花費: <b style={{fontSize:'1.1rem', color: totalSpent > trip.details.total_budget ? '#e74c3c' : '#27ae60'}}>${totalSpent.toLocaleString()}</b></div>
+           <div style={{fontSize:'1rem'}}>
+             目前花費: <b style={{fontSize:'1.1rem', color: totalSpent > budget ? '#e74c3c' : '#27ae60'}}>
+               ${totalSpent.toLocaleString()}
+             </b>
+           </div>
         </div>
 
         {trip.note && (
@@ -617,6 +646,7 @@ const TripPlanner = ({ trip, onBack, onUpdateTrip, onDeleteTrip, allEvents, setA
         )}
       </div>
 
+      {/* 天數切換按鈕 */}
       <div style={{display:'flex', gap:'10px', overflowX:'auto', paddingBottom:'10px'}}>
         {days.map(d => (
           <button 
@@ -633,6 +663,7 @@ const TripPlanner = ({ trip, onBack, onUpdateTrip, onDeleteTrip, allEvents, setA
         ))}
       </div>
 
+      {/* 每日活動列表 */}
       <div style={{marginTop:'20px'}}>
         <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'15px'}}>
            <div style={{display:'flex', alignItems:'baseline', gap:'12px'}}>
@@ -649,39 +680,67 @@ const TripPlanner = ({ trip, onBack, onUpdateTrip, onDeleteTrip, allEvents, setA
             本日尚無行程，點擊右上方按鈕新增
           </div>
         ) : (
-          dayEvents.map(ev => (
-            <div key={ev.id} style={{display:'flex', background:'white', padding:'15px', marginBottom:'12px', borderRadius:'8px', borderLeft:`5px solid ${EXPENSE_CATEGORIES[ev.category]?.color || '#999'}`, boxShadow:'0 2px 4px rgba(0,0,0,0.05)', border:'1px solid #f0f0f0'}}>
-              <div style={{minWidth:'60px', fontWeight:'bold', color:'#333'}}>{ev.start_time}</div>
-              <div style={{flex:1}}>
-                <b style={{fontSize:'1.05rem'}}>{ev.title}</b>
-                <div style={{fontSize:'0.9rem', color:'#666', marginTop:'3px'}}>{ev.place_name}</div>
-                <span style={{fontSize:'0.75rem', background:'#f4f4f4', padding:'3px 8px', borderRadius:'4px', color:'#666', marginTop:'5px', display:'inline-block'}}>{EXPENSE_CATEGORIES[ev.category]?.label || '其他'}</span>
-              </div>
-              <div style={{textAlign:'right', display:'flex', flexDirection:'column', justifyContent:'center'}}>
-                <div style={{fontWeight:'bold', fontSize:'1.1rem'}}>{
-                  ev.cost === '' || ev.cost === null || ev.cost === undefined
-                    ? ''
-                    : `$${Number(ev.cost).toLocaleString()}`
-                }</div>
-                <div style={{fontSize:'0.85rem', marginTop:'8px'}}>
-                   <span onClick={()=>{setEditingEvent(ev); setIsEventFormOpen(true);}} style={{cursor:'pointer', marginRight:'12px', color:'#555', textDecoration:'underline'}}>編輯</span>
-                   <span onClick={(e)=>{e.stopPropagation(); setAllEvents(prev=>prev.filter(x=>x.id!==ev.id));}} style={{cursor:'pointer', color:'#e74c3c'}}>刪除</span>
+          dayEvents.map(ev => {
+            // 防呆：確保讀得到顏色
+            const catConfig = EXPENSE_CATEGORIES[ev.category] || EXPENSE_CATEGORIES['other'];
+            
+            return (
+              <div key={ev.id} style={{display:'flex', background:'white', padding:'15px', marginBottom:'12px', borderRadius:'8px', borderLeft:`5px solid ${catConfig.color}`, boxShadow:'0 2px 4px rgba(0,0,0,0.05)', border:'1px solid #f0f0f0'}}>
+                <div style={{minWidth:'60px', fontWeight:'bold', color:'#333'}}>{ev.start_time}</div>
+                <div style={{flex:1}}>
+                  <b style={{fontSize:'1.05rem'}}>{ev.title}</b>
+                  <div style={{fontSize:'0.9rem', color:'#666', marginTop:'3px'}}>{ev.place_name}</div>
+                  <span style={{fontSize:'0.75rem', background:'#f4f4f4', padding:'3px 8px', borderRadius:'4px', color:'#666', marginTop:'5px', display:'inline-block'}}>
+                    {catConfig.label}
+                  </span>
+                </div>
+                <div style={{textAlign:'right', display:'flex', flexDirection:'column', justifyContent:'center'}}>
+                  <div style={{fontWeight:'bold', fontSize:'1.1rem'}}>
+                    {ev.cost ? `$${Number(ev.cost).toLocaleString()}` : ''}
+                  </div>
+                  <div style={{fontSize:'0.85rem', marginTop:'8px'}}>
+                    <span onClick={()=>{setEditingEvent(ev); setIsEventFormOpen(true);}} style={{cursor:'pointer', marginRight:'12px', color:'#555', textDecoration:'underline'}}>編輯</span>
+                    
+                    {/* 刪除按鈕 (套用你的邏輯) */}
+                    <span 
+                      onClick={(e)=>{
+                        e.stopPropagation(); 
+                        if(window.confirm('確定要刪除這個活動嗎？')) {
+                          onDeleteEvent(ev.id);
+                        }
+                      }} 
+                      style={{cursor:'pointer', color:'#e74c3c'}}
+                    >
+                      刪除
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
-      {isEventFormOpen && <EventForm tripId={trip.id} currentDay={currentDay} initialData={editingEvent} onSave={handleSaveEvent} onCancel={()=>setIsEventFormOpen(false)}/>}
+      {/* 活動表單 Modal */}
+      {isEventFormOpen && (
+        <EventForm 
+          tripId={trip.id} 
+          currentDay={currentDay} 
+          initialData={editingEvent} 
+          onSave={handleSaveEventWrapper} 
+          onCancel={()=>setIsEventFormOpen(false)}
+        />
+      )}
       
+      {/* 編輯行程 Modal */}
       {isEditTripModalOpen && (
         <TripSetupModal 
           initialData={{
             title: trip.title,
             start_date: trip.start_date, start_time: trip.start_time,
             end_date: trip.end_date, end_time: trip.end_time,
-            budget: trip.details.total_budget, note: trip.note
+            budget: trip.details?.total_budget, 
+            note: trip.note
           }}
           onSave={(updatedData) => { onUpdateTrip(updatedData); setIsEditTripModalOpen(false); }}
           onCancel={() => setIsEditTripModalOpen(false)}
@@ -697,7 +756,15 @@ function App() {
   const [activeTab, setActiveTab] = useState('HOME');
   const [trips, setTrips] = useState([]);
   const [allEvents, setAllEvents] = useState(initialEvents);
-  const [planningTrip, setPlanningTrip] = useState(null);
+  const [planningTrip, setPlanningTrip] = useState(() => {
+    try {
+      const saved = localStorage.getItem('active_planning_trip');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+
   const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
   const [favorites, setFavorites] = useState([101, 103]);
   
@@ -713,12 +780,14 @@ function App() {
 
   // 登出時清除localStorage
   const handleLogout = () => {
-    if(window.confirm('確定要登出嗎？')) {
-      localStorage.removeItem('travel_app_user'); 
-      setUser(null);
-      setActiveTab('HOME');
-      setPlanningTrip(null);
-    }
+    setUser(null);
+    setPlanningTrip(null);
+    setTrips([]);
+    localStorage.removeItem('travel_app_user'); //清除使用者資料
+    localStorage.removeItem('travel_app_token'); //清除Token
+    //登出時順便清除「正在瀏覽的行程」
+    localStorage.removeItem('active_planning_trip'); 
+    setActiveTab('HOME');
   };
 
   const toggleFavorite = (id) => {
@@ -813,9 +882,7 @@ function App() {
     </div>
   );
 
-  if (!user) {
-    return <LoginPage onLogin={handleLoginSuccess} />;
-  }
+
 
   // 1. 讀取行程 (GET) - 配合後端 datetime 格式
   const fetchUserTrips = async (userId) => {
@@ -1023,49 +1090,197 @@ function App() {
     }
   };
 
-  return (
-    <div>
-      <nav className="navbar">
-        <div className="nav-menu">
-          <button className={`nav-item ${activeTab==='HOME'?'active':''}`} onClick={()=>{setActiveTab('HOME'); setPlanningTrip(null);}}>首頁</button>
-          <button className={`nav-item ${activeTab==='FAVORITES'?'active':''}`} onClick={()=>{setActiveTab('FAVORITES'); setPlanningTrip(null);}}>精選</button>
-          <button className={`nav-item ${activeTab==='EXPENSES'?'active':''}`} onClick={()=>{setActiveTab('EXPENSES'); setPlanningTrip(null);}}>開銷</button>
-          <button className={`nav-item ${activeTab==='PROFILE'?'active':''}`} onClick={()=>{setActiveTab('PROFILE'); setPlanningTrip(null);}}>使用者</button>
-        </div>
-      
-        <button onClick={handleLogout} style={{position:'absolute', right:'20px', background:'none', border:'none', cursor:'pointer', color:'#999', fontSize:'0.8rem'}}>
-          登出 ➔
-        </button>
-      </nav>
+  // ==========================================
+  // ★ 5. 取得特定行程的所有活動 (GET)
+  // ==========================================
+  const fetchTripEvents = async (tripId) => {
+    try {
+      // 呼叫 API: /api/trips/<tripId>/events
+      const response = await fetch(`${API_HOST}/api/trips/${tripId}/events`, {
+        method: 'GET',
+        headers: {
+          // 保留這個 header 以免 Ngrok 又擋路
+          "ngrok-skip-browser-warning": "true", 
+          "Content-Type": "application/json"
+        }
+      });
 
-      {planningTrip ? (
-        <TripPlanner 
-          trip={planningTrip} 
-          onBack={() => setPlanningTrip(null)} 
-          onUpdateTrip={handleUpdateTrip}   
-          onDeleteTrip={handleDeleteTrip}  
-          allEvents={allEvents} 
-          setAllEvents={setAllEvents} 
-        />
-      ) : (
-        <>
-          {activeTab === 'HOME' && renderHome()}
-          {activeTab === 'FAVORITES' && <FavoritesPage places={placesData} favorites={favorites} onToggleFavorite={toggleFavorite} />}
-          {activeTab === 'EXPENSES' && <ExpensesPage trips={trips} allEvents={allEvents} />}
-          
-          {activeTab === 'PROFILE' && (
-            <ProfilePage 
-              user={user} 
-              trips={trips} 
-              favCount={favorites.length} 
-              onUpdateUser={handleUpdateUser} 
-              onSelectTrip={setPlanningTrip} 
-              onNavigateToFavorites={() => setActiveTab('FAVORITES')} 
-            />
-          )}
-        </>
-      )}
-    </div>
+      const resData = await response.json();
+
+      if (resData.code === "200" && Array.isArray(resData.data)) {
+        const formattedEvents = resData.data.map(e => ({
+          id: e.id,
+          trip_id: e.Trips_id,
+          day_no: e.day_no,
+          title: e.title,
+          place_name: e.place_name,
+          start_time: e.start_time ? String(e.start_time).slice(0, 5) : '',
+          end_time: e.end_time ? String(e.end_time).slice(0, 5) : '',
+          cost: e.planned_cost || 0,
+          category: e.category || 'other' 
+        }));
+
+        setAllEvents(formattedEvents);
+        console.log("✅ 活動列表載入完成:", formattedEvents); 
+        }else {
+        console.warn("後端回傳資料為空或失敗:", resData);
+        setAllEvents([]);
+      }
+    } catch (error) {
+      console.error("抓取活動失敗:", error);
+      setAllEvents([]);
+    }
+  };
+
+// App 元件內部
+
+  useEffect(() => {
+    if (planningTrip && planningTrip.id) {
+      // 1. 存檔到 localStorage (防重整消失)
+      localStorage.setItem('active_planning_trip', JSON.stringify(planningTrip));
+      
+      // 2. ★★★ 關鍵補強：點擊行程後，立刻去抓該行程的活動資料！ ★★★
+      fetchTripEvents(planningTrip.id);
+      
+    } else {
+      // 沒行程 -> 清除 localStorage
+      localStorage.removeItem('active_planning_trip');
+      
+      // 順便把活動清空，避免下次點進別的行程時閃爍舊資料
+      setAllEvents([]);
+    }
+  }, [planningTrip]); // 只要 planningTrip 變動，就會自動執行
+
+
+  // ==========================================
+  // ★ 6. 儲存活動 (新增 POST / 編輯 PUT)
+  // ==========================================
+  const handleSaveEvent = async (eventData) => {
+    try {
+      const isEdit = !!eventData.id; // 有 id 代表是編輯，沒有就是新增
+      let url, method;
+
+      if (isEdit) {
+        // 編輯模式: PUT /api/events/<event_id>
+        url = `${API_HOST}/api/events/${eventData.id}`;
+        method = 'PUT';
+      } else {
+        // 新增模式: POST /api/events/events/<trip_id>
+        url = `${API_HOST}/api/events/${planningTrip.id}`;
+        method = 'POST';
+      }
+
+      // 準備傳給後端的資料 (Payload)
+      const payload = {
+        day_no: eventData.day_no,
+        title: eventData.title,
+        start_time: eventData.start_time,
+        end_time: eventData.end_time,
+        place_name: eventData.place_name,
+        cost: parseInt(eventData.cost) || 0,
+        category: eventData.category // 新增時會用到，編輯時後端雖沒寫 category update 但傳了不影響
+      };
+
+      const response = await fetch(url, {
+        method: method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const resData = await response.json();
+
+      if (resData.code === "200") {
+        // 成功後，最保險的做法是「重新抓取一次該行程的所有活動」
+        // 這樣可以確保拿到最新的 ID 和資料庫狀態
+        await fetchTripEvents(planningTrip.id);
+        
+        alert(isEdit ? "活動修改成功" : "活動新增成功");
+        return true; // 告訴呼叫者成功了
+      } else {
+        alert(`儲存失敗: ${resData.message}`);
+        return false;
+      }
+    } catch (error) {
+      console.error("儲存活動錯誤:", error);
+      alert("連線失敗");
+      return false;
+    }
+  };
+
+  // ==========================================
+  // ★ 7. 刪除活動 (DELETE)
+  // ==========================================
+  const handleDeleteEvent = async (eventId) => {
+    try {
+      // DELETE /api/events/events/<event_id>
+      const response = await fetch(`${API_HOST}/api/events/${eventId}`, {
+        method: 'DELETE'
+      });
+      const resData = await response.json();
+
+      if (resData.code === "200") {
+        // 前端直接過濾掉該筆資料，不用重抓，提升體驗
+        setAllEvents(prev => prev.filter(e => e.id !== eventId));
+      } else {
+        alert(`刪除失敗: ${resData.message}`);
+      }
+    } catch (error) {
+      console.error("刪除活動錯誤:", error);
+    }
+  };
+
+
+  return (
+    // 如果沒有 user，顯示登入頁
+    !user ? (
+      <LoginPage onLogin={handleLoginSuccess} />
+    ) : (
+      // 如果有 user，顯示原本的主程式
+      <div>
+        <nav className="navbar">
+          {/* ... 導覽列內容保持不變 ... */}
+          <div className="nav-menu">
+            <button className={`nav-item ${activeTab==='HOME'?'active':''}`} onClick={()=>{setActiveTab('HOME'); setPlanningTrip(null);}}>首頁</button>
+            <button className={`nav-item ${activeTab==='FAVORITES'?'active':''}`} onClick={()=>{setActiveTab('FAVORITES'); setPlanningTrip(null);}}>精選</button>
+            <button className={`nav-item ${activeTab==='EXPENSES'?'active':''}`} onClick={()=>{setActiveTab('EXPENSES'); setPlanningTrip(null);}}>開銷</button>
+            <button className={`nav-item ${activeTab==='PROFILE'?'active':''}`} onClick={()=>{setActiveTab('PROFILE'); setPlanningTrip(null);}}>使用者</button>
+          </div>
+        
+          <button onClick={handleLogout} style={{position:'absolute', right:'20px', background:'none', border:'none', cursor:'pointer', color:'#999', fontSize:'0.8rem'}}>
+            登出 ➔
+          </button>
+        </nav>
+
+        {planningTrip ? (
+          <TripPlanner 
+            trip={planningTrip} 
+            onBack={() => setPlanningTrip(null)} 
+            onUpdateTrip={handleUpdateTrip}   
+            onDeleteTrip={handleDeleteTrip}  
+            allEvents={allEvents}
+            onSaveEvent={handleSaveEvent}
+            onDeleteEvent={handleDeleteEvent}
+          />
+        ) : (
+          <>
+            {activeTab === 'HOME' && renderHome()}
+            {activeTab === 'FAVORITES' && <FavoritesPage places={placesData} favorites={favorites} onToggleFavorite={toggleFavorite} />}
+            {activeTab === 'EXPENSES' && <ExpensesPage trips={trips} allEvents={allEvents} />}
+            
+            {activeTab === 'PROFILE' && (
+              <ProfilePage 
+                user={user} 
+                trips={trips} 
+                favCount={favorites.length} 
+                onUpdateUser={handleUpdateUser} 
+                onSelectTrip={setPlanningTrip} 
+                onNavigateToFavorites={() => setActiveTab('FAVORITES')} 
+              />
+            )}
+          </>
+        )}
+      </div>
+    )
   );
 }
 
