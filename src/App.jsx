@@ -1040,7 +1040,6 @@ function App() {
     setTrips([]);
     localStorage.removeItem('travel_app_user'); //清除使用者資料
     localStorage.removeItem('travel_app_token'); //清除Token
-    //登出時順便清除「正在瀏覽的行程」
     localStorage.removeItem('active_planning_trip'); 
     localStorage.removeItem('travel_app_active_tab');
     localStorage.removeItem('favorites_view_mode');
@@ -1545,16 +1544,29 @@ function App() {
   };
 
   // 8-4. 取得個人對某地點的評論 (GET)
- const handleGetReview = async (placeId) => {
+  const handleGetReview = async (placeId) => {
     try {
       const response = await fetch(`${API_HOST}/api/users/${user.id}/places/${placeId}/review`, {
          headers: { "ngrok-skip-browser-warning": "true" }
       });
       const resData = await response.json();
-      if (resData.code === "200") {
-        return resData.data; 
+      
+      if (resData.code === "200" && resData.data) {
+        // ★★★ 關鍵修改在這裡 ★★★
+        // 後端給的是: { my_review: {...}, global_stat: {...} }
+        // 我們要在這裡把它「攤平」，讓 Modal 可以直接讀到 score, average_score
+        
+        const myReview = resData.data.my_review || {};
+        const globalStat = resData.data.global_stat || {};
+
+        return {
+          score: myReview.score || 0,
+          comment: myReview.comment || "",
+          average_score: globalStat.average_score || 0,
+          total_reviews: globalStat.total_reviews || 0
+        };
       }
-      // 後端回傳錯誤代碼時的預設值
+      
       return { score: 0, comment: "", average_score: 0, total_reviews: 0 };
     } catch (error) {
       console.error("取得評論失敗:", error);
