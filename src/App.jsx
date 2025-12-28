@@ -61,29 +61,41 @@ const HeroSection = ({ onStart }) => (
   </div>
 );
 // 珍藏頁面 
-const FavoritesPage = ({ places, favorites, onToggleFavorite }) => {
-  const [view, setView] = useState('saved');
+const FavoritesPage = ({ places, favList, favorites, onToggleFavorite, onGetReview, onSaveReview, onSearch }) => {
+  
+  const [view, setView] = useState(() => {
+    return localStorage.getItem('favorites_view_mode') || 'saved';
+  });
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPlace, setSelectedPlace] = useState(null);
-  const [placeUserData, setPlaceUserData] = useState({});
 
-  const sourcePlaces = view === 'saved' 
-    ? places.filter(p => favorites.includes(p.id)) 
-    : places;
+  useEffect(() => {
+    localStorage.setItem('favorites_view_mode', view);
+  }, [view]);
 
-  const displayPlaces = sourcePlaces.filter(p => 
-    p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.city.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.country.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.category.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  
+  let displayPlaces = [];
 
-  const handleSaveData = (placeId, data) => {
-    setPlaceUserData(prev => ({
-      ...prev,
-      [placeId]: data
-    }));
-    setSelectedPlace(null); 
+  if (view === 'saved') {
+    // 已珍藏頁面：使用前端過濾 (因為資料量通常不大)
+    displayPlaces = favList.filter(p => 
+      p.name?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  } else {
+    // 探索更多頁面：直接顯示後端回傳的搜尋結果
+    displayPlaces = places;
+  }
+
+  // 處理搜尋輸入
+  const handleInputChange = (e) => {
+    const val = e.target.value;
+    setSearchTerm(val);
+
+    // 如果是在「探索更多」模式，就呼叫後端 API 搜尋
+    if (view === 'explore') {
+      onSearch(val);
+    }
   };
 
   return (
@@ -93,77 +105,62 @@ const FavoritesPage = ({ places, favorites, onToggleFavorite }) => {
           {view === 'saved' ? 'MY FAVORITES' : 'EXPLORE MORE'}
         </h2>
         <div style={{background:'#eee', borderRadius:'20px', padding:'5px'}}>
-          <button 
-            onClick={() => { setView('saved'); setSearchTerm(''); }} 
-            style={{padding:'8px 20px', borderRadius:'15px', border:'none', cursor:'pointer', background: view==='saved'?'white':'transparent', boxShadow: view==='saved'?'0 2px 5px rgba(0,0,0,0.1)':'none', fontWeight: view==='saved'?'bold':'normal'}}
-          >
-            已珍藏
-          </button>
-          <button 
-            onClick={() => { setView('explore'); setSearchTerm(''); }} 
-            style={{padding:'8px 20px', borderRadius:'15px', border:'none', cursor:'pointer', background: view==='explore'?'white':'transparent', boxShadow: view==='explore'?'0 2px 5px rgba(0,0,0,0.1)':'none', fontWeight: view==='explore'?'bold':'normal'}}
-          >
-            探索更多
-          </button>
+          <button onClick={() => { setView('saved'); setSearchTerm(''); }} style={{padding:'8px 20px', borderRadius:'15px', border:'none', cursor:'pointer', background: view==='saved'?'white':'transparent', fontWeight: view==='saved'?'bold':'normal'}}>已珍藏</button>
+          <button onClick={() => { setView('explore'); setSearchTerm(''); onSearch(''); }} style={{padding:'8px 20px', borderRadius:'15px', border:'none', cursor:'pointer', background: view==='explore'?'white':'transparent', fontWeight: view==='explore'?'bold':'normal'}}>探索更多</button>
         </div>
       </div>
 
       <div style={{textAlign: 'center', marginBottom: '30px'}}>
         <input
           type="text"
-          placeholder={view === 'saved' ? "🔍 搜尋我的收藏..." : "🔍 搜尋景點、城市 (例如: 東京, 拉麵...)"}
+          placeholder={view === 'saved' ? "🔍 我的收藏..." : "🔍 輸入關鍵字搜尋景點..."}
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          style={{
-            width: '100%', maxWidth: '500px', padding: '12px 20px', fontSize: '1rem',
-            borderRadius: '30px', border: '1px solid #ddd', boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
-            outline: 'none', transition: 'all 0.2s', background: 'white'
-          }}
-          onFocus={(e) => e.target.style.boxShadow = '0 2px 12px rgba(0,0,0,0.1)'}
-          onBlur={(e) => e.target.style.boxShadow = '0 2px 8px rgba(0,0,0,0.05)'}
+          onChange={handleInputChange}
+          style={{width: '100%', maxWidth: '500px', padding: '12px 20px', fontSize: '1rem', borderRadius: '30px', border: '1px solid #ddd', outline: 'none'}}
         />
       </div>
 
-      {displayPlaces.length === 0 ? (
+      {view === 'explore' && searchTerm === '' && displayPlaces.length === 0 ? (
+        // 探索模式且沒打字時的提示
         <div style={{padding:'50px', textAlign:'center', color:'#888', border:'2px dashed #ddd', borderRadius:'8px', background: '#f9f9f9'}}>
-          {searchTerm 
-            ? `找不到符合「${searchTerm}」的地點` 
-            : (view === 'saved' ? '還沒有珍藏任何地點，快切換到「探索更多」吧！' : '目前資料庫沒有相關景點')
-          }
+          請在上方輸入關鍵字開始搜尋...
+        </div>
+      ) : displayPlaces.length === 0 ? (
+        // 找不到資料
+        <div style={{padding:'50px', textAlign:'center', color:'#888', border:'2px dashed #ddd', borderRadius:'8px', background: '#f9f9f9'}}>
+          {searchTerm ? `找不到符合「${searchTerm}」的景點` : '目前沒有資料'}
         </div>
       ) : (
+        // 顯示列表
         <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(250px, 1fr))', gap:'20px'}}>
           {displayPlaces.map(place => {
             const isFav = favorites.includes(place.id);
-            const userData = placeUserData[place.id]; 
-
             return (
               <div 
                 key={place.id} 
                 className="trip-card" 
                 onClick={() => setSelectedPlace(place)}
-                style={{cursor:'pointer', position:'relative', transition: 'transform 0.2s', border: '1px solid #eee'}}
+                style={{cursor:'pointer', position:'relative', border: '1px solid #eee'}}
               >
                 <div style={{padding:'30px'}}>
-                  <div style={{display:'flex', justifyContent:'space-between', alignItems:'start'}}>
-                    <h3 style={{margin:0, fontSize:'1.1rem'}}>{place.name}</h3>
+                  <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
+                    <h3 style={{margin:0, fontSize:'1.1rem', lineHeight:'1.4'}}>{place.name}</h3>
                     <button 
                       onClick={(e) => {
                         e.stopPropagation(); 
                         onToggleFavorite(place.id);
                       }}
-                      style={{background:'none', border:'none', cursor:'pointer', fontSize:'1.5rem', color: isFav ? '#e74c3c' : '#ccc', transition:'transform 0.2s', zIndex: 2}}
+                      style={{
+                        background:'none', border:'none', cursor:'pointer', fontSize:'1.5rem', 
+                        color: isFav ? '#e74c3c' : '#ccc', minWidth:'30px', padding:0
+                      }}
                     >
                       {isFav ? '❤️' : '🤍'}
                     </button>
                   </div>
-                  
-                  {userData && (
-                     <div style={{marginTop: '10px', fontSize: '0.85rem', color: '#888', background:'#f9f9f9', padding:'8px', borderRadius:'6px'}}>
-                        {userData.rating > 0 && <span style={{color: '#f39c12', marginRight:'5px'}}>★ {userData.rating}</span>}
-                        {userData.note && <span>📝 已有記錄</span>}
-                     </div>
-                  )}
+                  <div style={{marginTop:'15px', fontSize:'0.85rem', color:'#888', display:'flex', alignItems:'center', gap:'5px'}}>
+                     <span>📝 點擊查看評價與筆記</span>
+                  </div>
                 </div>
               </div>
             );
@@ -174,8 +171,8 @@ const FavoritesPage = ({ places, favorites, onToggleFavorite }) => {
       {selectedPlace && (
         <PlaceDetailsModal 
           place={selectedPlace}
-          initialData={placeUserData[selectedPlace.id]}
-          onSave={handleSaveData}
+          onGetReview={onGetReview}
+          onSaveReview={onSaveReview}
           onClose={() => setSelectedPlace(null)}
         />
       )}
@@ -183,14 +180,49 @@ const FavoritesPage = ({ places, favorites, onToggleFavorite }) => {
   );
 };
 
-// 評分與備註的彈窗元件
-const PlaceDetailsModal = ({ place, initialData, onSave, onClose }) => {
-  const [rating, setRating] = useState(initialData?.rating || 0);
-  const [note, setNote] = useState(initialData?.note || '');
+// 評價與筆記視窗
+const PlaceDetailsModal = ({ place, onGetReview, onSaveReview, onClose }) => {
+  const [rating, setRating] = useState(0);
+  const [note, setNote] = useState('');
+  
+  const [avgScore, setAvgScore] = useState(0);
+  const [totalReviews, setTotalReviews] = useState(0);
+  
+  const [isLoading, setIsLoading] = useState(true);
 
-  const handleSubmit = (e) => {
+  const getScoreColor = (score) => {
+    const s = parseFloat(score);
+    if (s === 0) return '#ccc';      // 0分 (無評價) -> 灰色
+    if (s < 2) return '#e74c3c';     // 2分以下 -> 紅色
+    if (s <= 3.5) return '#f39c12';  // 2~3.5分 -> 黃橘色
+    return '#27ae60';                // 3.6分以上 -> 綠色
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadReview = async () => {
+      setIsLoading(true);
+      const data = await onGetReview(place.id);
+      
+      if (isMounted && data) {
+        setRating(data.score || 0);
+        setNote(data.comment || '');
+        setAvgScore(parseFloat(data.average_score || 0).toFixed(1));
+        setTotalReviews(data.total_reviews || 0);
+      }
+      if (isMounted) setIsLoading(false);
+    };
+    loadReview();
+    
+    return () => { isMounted = false; };
+  }, [place.id, onGetReview]);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    onSave(place.id, { rating, note });
+    const success = await onSaveReview(place.id, { score: rating, comment: note });
+    if (success) {
+      onClose();
+    }
   };
 
   return (
@@ -200,49 +232,77 @@ const PlaceDetailsModal = ({ place, initialData, onSave, onClose }) => {
     }}>
       <div className="modal-content" style={{
         background: 'white', padding: '30px', borderRadius: '12px', width: '90%', maxWidth: '400px',
-        boxShadow: '0 5px 15px rgba(0,0,0,0.2)', animation: 'slideIn 0.3s ease-out'
+        boxShadow: '0 5px 15px rgba(0,0,0,0.2)'
       }}>
-        <h3 style={{marginTop: 0, marginBottom: '20px'}}>{place.name} - 旅遊評價與筆記</h3>
+        <h3 style={{marginTop: 0, marginBottom: '20px'}}>{place.name} - 您的評價</h3>
         
-        <form onSubmit={handleSubmit}>
-          <div className="form-group" style={{marginBottom: '20px'}}>
-            <label style={{display:'block', marginBottom:'8px', fontWeight:'bold'}}>您的評分</label>
-            <div style={{display: 'flex', gap: '5px', cursor: 'pointer'}}>
-              {[1, 2, 3, 4, 5].map((star) => (
-                <span 
-                  key={star} 
-                  onClick={() => setRating(star)}
-                  style={{
-                    fontSize: '2rem', 
-                    color: star <= rating ? '#FFD700' : '#ddd', 
-                    transition: 'color 0.2s'
-                  }}
-                >
-                  ★
-                </span>
-              ))}
-              <span style={{marginLeft:'10px', lineHeight:'3rem', color:'#666', fontSize:'0.9rem'}}>
-                {rating > 0 ? `${rating} 顆星` : '尚未評分'}
-              </span>
+        <div style={{textAlign:'center', borderBottom:'1px solid #eee', paddingBottom:'20px', marginBottom:'20px'}}>
+          
+          <div style={{
+            display:'inline-flex', justifyContent:'center', alignItems:'center', gap:'15px', 
+            background:'#f8f9fa', padding:'15px 25px', borderRadius:'12px', 
+            border: `2px solid ${getScoreColor(avgScore)}` // 邊框也跟著變色
+          }}>
+            <div style={{
+              fontSize:'2.5rem', 
+              fontWeight:'bold', 
+              color: getScoreColor(avgScore) 
+            }}>
+              {avgScore}
+            </div>
+            
+            <div style={{textAlign:'left', fontSize:'0.9rem', color:'#666'}}>
+              <div style={{fontWeight:'bold', color:'#333'}}>綜合評分</div>
+              <div>共 {totalReviews} 人評價</div>
             </div>
           </div>
-
-          <div className="form-group" style={{marginBottom: '20px'}}>
-            <label style={{display:'block', marginBottom:'8px', fontWeight:'bold'}}>備註</label>
-            <textarea 
-              rows="4"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="寫下這次旅遊感想..."
-              style={{width: '100%', padding:'10px', borderRadius:'8px', border:'1px solid #ddd'}}
-            />
+        </div>
+        
+        {isLoading ? (
+          <div style={{textAlign:'center', padding:'20px', color:'#666'}}>
+            正在讀取資訊...
           </div>
+        ) : (
+          <form onSubmit={handleSubmit}>
+            <div className="form-group" style={{marginBottom: '20px'}}>
+              <label style={{display:'block', marginBottom:'8px', fontWeight:'bold'}}>您的評分</label>
+              <div style={{display: 'flex', gap: '5px', cursor: 'pointer'}}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <span 
+                    key={star} 
+                    onClick={() => setRating(star)}
+                    style={{
+                      fontSize: '2rem', 
+                      color: star <= rating ? '#FFD700' : '#ddd', 
+                      transition: 'color 0.2s'
+                    }}
+                  >
+                    ★
+                  </span>
+                ))}
+                <span style={{marginLeft:'10px', lineHeight:'3rem', color:'#666', fontSize:'0.9rem'}}>
+                  {rating > 0 ? `${rating} 顆星` : '尚未評分'}
+                </span>
+              </div>
+            </div>
 
-          <div className="modal-actions" style={{display:'flex', justifyContent:'flex-end', gap:'10px'}}>
-            <button type="button" onClick={onClose} className="btn-secondary" style={{padding:'8px 16px', border:'1px solid #ddd', background:'white', borderRadius:'6px', cursor:'pointer'}}>取消</button>
-            <button type="submit" className="btn-primary" style={{padding:'8px 16px', border:'none', background:'#333', color:'white', borderRadius:'6px', cursor:'pointer'}}>儲存</button>
-          </div>
-        </form>
+            <div className="form-group" style={{marginBottom: '20px'}}>
+              <label style={{display:'block', marginBottom:'8px', fontWeight:'bold'}}>心得筆記</label>
+              <textarea 
+                rows="4"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="寫下這次旅遊感想..."
+                style={{width: '100%', padding:'10px', borderRadius:'8px', border:'1px solid #ddd'}}
+              />
+            </div>
+
+            <div className="modal-actions" style={{display:'flex', justifyContent:'flex-end', gap:'10px'}}>
+              <button type="button" onClick={onClose} className="btn-secondary" style={{padding:'8px 16px', border:'1px solid #ddd', background:'white', borderRadius:'6px', cursor:'pointer'}}>取消</button>
+              <button type="submit" className="btn-primary" style={{padding:'8px 16px', border:'none', background:'#333', color:'white', borderRadius:'6px', cursor:'pointer'}}>儲存評價</button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );
@@ -315,7 +375,7 @@ const ExpensesPage = ({ trips, allEvents }) => {
 const ProfilePage = ({ user, trips, favCount, onUpdateUser, onSelectTrip, onNavigateToFavorites }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({ name: user.name, email: user.email });
-  const [isSaving, setIsSaving] = useState(false); // 新增：防止重複點擊
+  const [isSaving, setIsSaving] = useState(false); 
   
   // 行程列表視窗
   const [isTripsListOpen, setIsTripsListOpen] = useState(false);
@@ -575,9 +635,8 @@ const TripPlanner = ({ trip, onBack, onUpdateTrip, onDeleteTrip, allEvents = [],
   // 計算當日花費
   const dailySpent = dayEvents.reduce((sum, e) => sum + (Number(e.cost) || 0), 0);
 
-  // ==========================================
-  // ★ 修改 2: 改寫儲存邏輯 (呼叫後端 API)
-  // ==========================================
+
+  // 改寫儲存邏輯 (呼叫後端 API)
   const handleSaveEventWrapper = async (data) => {
     const success = await onSaveEvent(data);
     if (success) {
@@ -610,7 +669,6 @@ const TripPlanner = ({ trip, onBack, onUpdateTrip, onDeleteTrip, allEvents = [],
 
   return (
     <div className="container" style={{paddingBottom:'100px'}}>
-      {/* 上方導覽列與按鈕 */}
       <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px'}}>
         <button className="btn-back" onClick={onBack} style={{margin:0}}>← 返回行程列表</button>
         <div style={{display:'flex', gap:'10px'}}>
@@ -619,7 +677,6 @@ const TripPlanner = ({ trip, onBack, onUpdateTrip, onDeleteTrip, allEvents = [],
         </div>
       </div>
 
-      {/* 行程資訊卡片 */}
       <div style={{background:'white', padding:'25px', borderRadius:'12px', boxShadow:'0 2px 10px rgba(0,0,0,0.05)', marginBottom:'25px', border:'1px solid #eee'}}>
         <h1 style={{margin:'0 0 15px 0', fontSize:'2rem'}}>{trip.title}</h1>
         
@@ -646,7 +703,6 @@ const TripPlanner = ({ trip, onBack, onUpdateTrip, onDeleteTrip, allEvents = [],
         )}
       </div>
 
-      {/* 天數切換按鈕 */}
       <div style={{display:'flex', gap:'10px', overflowX:'auto', paddingBottom:'10px'}}>
         {days.map(d => (
           <button 
@@ -663,7 +719,6 @@ const TripPlanner = ({ trip, onBack, onUpdateTrip, onDeleteTrip, allEvents = [],
         ))}
       </div>
 
-      {/* 每日活動列表 */}
       <div style={{marginTop:'20px'}}>
         <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'15px'}}>
            <div style={{display:'flex', alignItems:'baseline', gap:'12px'}}>
@@ -681,7 +736,6 @@ const TripPlanner = ({ trip, onBack, onUpdateTrip, onDeleteTrip, allEvents = [],
           </div>
         ) : (
           dayEvents.map(ev => {
-            // 防呆：確保讀得到顏色
             const catConfig = EXPENSE_CATEGORIES[ev.category] || EXPENSE_CATEGORIES['other'];
             
             return (
@@ -701,7 +755,6 @@ const TripPlanner = ({ trip, onBack, onUpdateTrip, onDeleteTrip, allEvents = [],
                   <div style={{fontSize:'0.85rem', marginTop:'8px'}}>
                     <span onClick={()=>{setEditingEvent(ev); setIsEventFormOpen(true);}} style={{cursor:'pointer', marginRight:'12px', color:'#555', textDecoration:'underline'}}>編輯</span>
                     
-                    {/* 刪除按鈕 (套用你的邏輯) */}
                     <span 
                       onClick={(e)=>{
                         e.stopPropagation(); 
@@ -721,7 +774,6 @@ const TripPlanner = ({ trip, onBack, onUpdateTrip, onDeleteTrip, allEvents = [],
         )}
       </div>
 
-      {/* 活動表單 Modal */}
       {isEventFormOpen && (
         <EventForm 
           tripId={trip.id} 
@@ -732,7 +784,6 @@ const TripPlanner = ({ trip, onBack, onUpdateTrip, onDeleteTrip, allEvents = [],
         />
       )}
       
-      {/* 編輯行程 Modal */}
       {isEditTripModalOpen && (
         <TripSetupModal 
           initialData={{
@@ -753,7 +804,10 @@ const TripPlanner = ({ trip, onBack, onUpdateTrip, onDeleteTrip, allEvents = [],
 // 主程式
 
 function App() {
-  const [activeTab, setActiveTab] = useState('HOME');
+  const [activeTab, setActiveTab] = useState(() => {
+  // 嘗試讀取上次停留的分頁，如果沒有就預設回 HOME
+  return localStorage.getItem('travel_app_active_tab') || 'HOME';
+});
   const [trips, setTrips] = useState([]);
   const [allEvents, setAllEvents] = useState(initialEvents);
   const [planningTrip, setPlanningTrip] = useState(() => {
@@ -766,7 +820,9 @@ function App() {
   });
 
   const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
-  const [favorites, setFavorites] = useState([101, 103]);
+  const [favorites, setFavorites] = useState([]);
+  const [favList, setFavList] = useState([]);
+  const [places, setPlaces] = useState([]);
   
   const [user, setUser] = useState(() => {
     const savedUser = localStorage.getItem('travel_app_user');
@@ -787,6 +843,8 @@ function App() {
     localStorage.removeItem('travel_app_token'); //清除Token
     //登出時順便清除「正在瀏覽的行程」
     localStorage.removeItem('active_planning_trip'); 
+    localStorage.removeItem('travel_app_active_tab');
+    localStorage.removeItem('favorites_view_mode');
     setActiveTab('HOME');
   };
 
@@ -810,17 +868,17 @@ function App() {
       
       console.log("正在呼叫 API:", url);
 
-      // 4. ★ 關鍵修正：組合要傳送的資料
+      // 4. 組合要傳送的資料
       const payload = {
-          id: user.id,              // 必填：告訴後端要改誰
-          name: updatedData.name,   // 必填：新的名字
+          id: user.id,             
+          name: updatedData.name,   
       };
 
       const response = await fetch(url, {
         method: 'POST', // ★ 配合後端改成 POST
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': token ? `Bearer ${token}` : '' // 帶著 Token 以防萬一
+          'Authorization': token ? `Bearer ${token}` : '' 
         },
         body: JSON.stringify(payload) // 傳送包含 id 的完整資料
       });
@@ -844,8 +902,6 @@ function App() {
         return true;
 
       } else {
-        // 失敗時 (例如 code: "1003")
-        // 顯示後端回傳的 message，例如 "資料修改失敗"
         throw new Error(result.message || '更新失敗');
       }
 
@@ -959,7 +1015,6 @@ function App() {
   };
 
   useEffect(() => {
-    // 只要 user 狀態存在且有 ID，就去抓資料
     if (user && user.id) {
       fetchUserTrips(user.id);
     } else {
@@ -1090,16 +1145,12 @@ function App() {
     }
   };
 
-  // ==========================================
-  // ★ 5. 取得特定行程的所有活動 (GET)
-  // ==========================================
+  // 5. 取得特定行程的所有活動 (GET)
   const fetchTripEvents = async (tripId) => {
     try {
-      // 呼叫 API: /api/trips/<tripId>/events
       const response = await fetch(`${API_HOST}/api/trips/${tripId}/events`, {
         method: 'GET',
         headers: {
-          // 保留這個 header 以免 Ngrok 又擋路
           "ngrok-skip-browser-warning": "true", 
           "Content-Type": "application/json"
         }
@@ -1121,7 +1172,7 @@ function App() {
         }));
 
         setAllEvents(formattedEvents);
-        console.log("✅ 活動列表載入完成:", formattedEvents); 
+        console.log("活動列表載入完成:", formattedEvents); 
         }else {
         console.warn("後端回傳資料為空或失敗:", resData);
         setAllEvents([]);
@@ -1139,7 +1190,6 @@ function App() {
       // 1. 存檔到 localStorage (防重整消失)
       localStorage.setItem('active_planning_trip', JSON.stringify(planningTrip));
       
-      // 2. ★★★ 關鍵補強：點擊行程後，立刻去抓該行程的活動資料！ ★★★
       fetchTripEvents(planningTrip.id);
       
     } else {
@@ -1152,20 +1202,16 @@ function App() {
   }, [planningTrip]); // 只要 planningTrip 變動，就會自動執行
 
 
-  // ==========================================
-  // ★ 6. 儲存活動 (新增 POST / 編輯 PUT)
-  // ==========================================
+  // 6. 儲存活動 (新增 POST / 編輯 PUT)
   const handleSaveEvent = async (eventData) => {
     try {
       const isEdit = !!eventData.id; // 有 id 代表是編輯，沒有就是新增
       let url, method;
 
       if (isEdit) {
-        // 編輯模式: PUT /api/events/<event_id>
         url = `${API_HOST}/api/events/${eventData.id}`;
         method = 'PUT';
       } else {
-        // 新增模式: POST /api/events/events/<trip_id>
         url = `${API_HOST}/api/events/${planningTrip.id}`;
         method = 'POST';
       }
@@ -1178,7 +1224,7 @@ function App() {
         end_time: eventData.end_time,
         place_name: eventData.place_name,
         cost: parseInt(eventData.cost) || 0,
-        category: eventData.category // 新增時會用到，編輯時後端雖沒寫 category update 但傳了不影響
+        category: eventData.category 
       };
 
       const response = await fetch(url, {
@@ -1190,12 +1236,10 @@ function App() {
       const resData = await response.json();
 
       if (resData.code === "200") {
-        // 成功後，最保險的做法是「重新抓取一次該行程的所有活動」
-        // 這樣可以確保拿到最新的 ID 和資料庫狀態
         await fetchTripEvents(planningTrip.id);
         
         alert(isEdit ? "活動修改成功" : "活動新增成功");
-        return true; // 告訴呼叫者成功了
+        return true;
       } else {
         alert(`儲存失敗: ${resData.message}`);
         return false;
@@ -1207,9 +1251,7 @@ function App() {
     }
   };
 
-  // ==========================================
-  // ★ 7. 刪除活動 (DELETE)
-  // ==========================================
+  // 7. 刪除活動 (DELETE)
   const handleDeleteEvent = async (eventId) => {
     try {
       // DELETE /api/events/events/<event_id>
@@ -1219,7 +1261,6 @@ function App() {
       const resData = await response.json();
 
       if (resData.code === "200") {
-        // 前端直接過濾掉該筆資料，不用重抓，提升體驗
         setAllEvents(prev => prev.filter(e => e.id !== eventId));
       } else {
         alert(`刪除失敗: ${resData.message}`);
@@ -1229,16 +1270,132 @@ function App() {
     }
   };
 
+  // 8-1. 搜尋公共景點 (GET /api/places)
+  const handleSearchPlaces = async (keyword) => {
+    if (!keyword) {
+      setPlaces([]); // 如果沒字，就清空列表
+      return;
+    }
+    
+    try {
+      const response = await fetch(`${API_HOST}/api/places?q=${keyword}`, {
+        headers: { "ngrok-skip-browser-warning": "true" }
+      });
+      const resData = await response.json();
+      if (resData.code === "200") {
+        const mappedPlaces = resData.data.map(p => ({
+          id: p.place_id,
+          name: p.name
+        }));
+        setPlaces(mappedPlaces);
+      }
+    } catch (error) {
+      console.error("搜尋失敗:", error);
+    }
+  };
+
+  useEffect(() => {
+    localStorage.setItem('travel_app_active_tab', activeTab);
+  }, [activeTab]);
+
+  // 8-2. 取得使用者的收藏清單 (GET /users/<id>/favorites)
+  const fetchFavorites = async () => {
+    if (!user) return;
+    try {
+      const response = await fetch(`${API_HOST}/api/users/${user.id}/favorites`, {
+        headers: { "ngrok-skip-browser-warning": "true" }
+      });
+      const resData = await response.json();
+      if (resData.code === "200") {
+        const rawData = resData.data;
+        
+        // 1. 存 ID 用於判斷愛心
+        setFavorites(rawData.map(item => item.place_id));
+        
+        setFavList(rawData.map(item => ({
+            id: item.place_id,
+            name: item.name
+        })));
+      }
+    } catch (error) {
+      console.error("取得收藏失敗:", error);
+    }
+  };
+
+  // 8-3. 切換收藏狀態 (POST /api/favorites)
+  const handleToggleFavorite = async (placeId) => {
+    try {
+      const response = await fetch(`${API_HOST}/api/favorites`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: user.id, place_id: placeId })
+      });
+      const resData = await response.json();
+      if (resData.code === "200") {
+        // 成功後，重新抓取最新的收藏清單
+        fetchFavorites();
+      } else {
+        alert(resData.message);
+      }
+    } catch (error) {
+      console.error("收藏失敗:", error);
+    }
+  };
+
+  // 8-4. 取得個人對某地點的評論 (GET)
+ const handleGetReview = async (placeId) => {
+    try {
+      const response = await fetch(`${API_HOST}/api/users/${user.id}/places/${placeId}/review`, {
+         headers: { "ngrok-skip-browser-warning": "true" }
+      });
+      const resData = await response.json();
+      if (resData.code === "200") {
+        return resData.data; 
+      }
+      // 後端回傳錯誤代碼時的預設值
+      return { score: 0, comment: "", average_score: 0, total_reviews: 0 };
+    } catch (error) {
+      console.error("取得評論失敗:", error);
+      return { score: 0, comment: "", average_score: 0, total_reviews: 0 };
+    }
+  };
+
+  // 8-5. 儲存個人評論 (POST)
+  const handleSaveReview = async (placeId, reviewData) => {
+    try {
+      const response = await fetch(`${API_HOST}/api/users/${user.id}/places/${placeId}/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(reviewData)
+      });
+      const resData = await response.json();
+      if (resData.code === "200") {
+        alert("評論已儲存");
+        return true;
+      } else {
+        alert("儲存失敗: " + resData.message);
+        return false;
+      }
+    } catch (error) {
+      console.error("儲存評論失敗:", error);
+      return false;
+    }
+  };
+
+ // 8-6. 當切換到 Favorites 頁籤時，只載入收藏清單，不預先載入搜尋結果
+  useEffect(() => {
+    if (activeTab === 'FAVORITES' && user) {
+      fetchFavorites();
+      setPlaces([]);
+    }
+  }, [activeTab, user]);
 
   return (
-    // 如果沒有 user，顯示登入頁
     !user ? (
       <LoginPage onLogin={handleLoginSuccess} />
     ) : (
-      // 如果有 user，顯示原本的主程式
       <div>
         <nav className="navbar">
-          {/* ... 導覽列內容保持不變 ... */}
           <div className="nav-menu">
             <button className={`nav-item ${activeTab==='HOME'?'active':''}`} onClick={()=>{setActiveTab('HOME'); setPlanningTrip(null);}}>首頁</button>
             <button className={`nav-item ${activeTab==='FAVORITES'?'active':''}`} onClick={()=>{setActiveTab('FAVORITES'); setPlanningTrip(null);}}>精選</button>
@@ -1264,7 +1421,17 @@ function App() {
         ) : (
           <>
             {activeTab === 'HOME' && renderHome()}
-            {activeTab === 'FAVORITES' && <FavoritesPage places={placesData} favorites={favorites} onToggleFavorite={toggleFavorite} />}
+            {activeTab === 'FAVORITES' && (
+              <FavoritesPage 
+                places={places}          
+                favList={favList}          
+                favorites={favorites}     
+                onToggleFavorite={handleToggleFavorite} 
+                onGetReview={handleGetReview}     
+                onSaveReview={handleSaveReview}
+                onSearch={handleSearchPlaces} 
+              />
+            )}
             {activeTab === 'EXPENSES' && <ExpensesPage trips={trips} allEvents={allEvents} />}
             
             {activeTab === 'PROFILE' && (
