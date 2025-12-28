@@ -10,23 +10,21 @@ const API_HOST = "https://01da5078501d.ngrok-free.app";
 const splitDateTime = (dtString) => {
   if (!dtString) return { date: '', time: '' };
 
-  // 讓瀏覽器幫我們解析時間
   const dateObj = new Date(dtString);
 
-  // 如果解析失敗 (Invalid Date)，回傳空值以免當機
   if (isNaN(dateObj.getTime())) {
     console.warn("無法解析日期:", dtString);
     return { date: '', time: '' };
   }
-
+  
   // 轉成 YYYY-MM-DD
-  const year = dateObj.getFullYear();
-  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-  const day = String(dateObj.getDate()).padStart(2, '0');
+  const year = dateObj.getUTCFullYear();
+  const month = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(dateObj.getUTCDate()).padStart(2, '0');
   
   // 轉成 HH:mm
-  const hours = String(dateObj.getHours()).padStart(2, '0');
-  const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+  const hours = String(dateObj.getUTCHours()).padStart(2, '0');
+  const minutes = String(dateObj.getUTCMinutes()).padStart(2, '0');
 
   return {
     date: `${year}-${month}-${day}`,
