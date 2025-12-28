@@ -904,7 +904,7 @@ const SQLPage = () => {
     setError('');
 
     try {
-      const response = await fetch(`${API_HOST}/api/admin/sql`, {
+      const response = await fetch(`${API_HOST}/api/admin/raw-sql`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -1052,28 +1052,28 @@ function App() {
 
   const handleUpdateUser = async (updatedData) => {
     try {
-      // 1. 檢查目前是否已登入 (要有 user.id)
+      // 檢查目前是否已登入 (要有 user.id)
       if (!user || !user.id) {
         alert("找不到使用者 ID，請重新登入");
         return;
       }
 
-      // 2. 取出 Token (雖然這段 Python 代碼沒顯示驗證 token，但帶著比較保險)
+      // 取出 Token (雖然這段 Python 代碼沒顯示驗證 token，但帶著比較保險)
       const token = localStorage.getItem('travel_app_token');
       
-      // 3. 設定 API 網址
+      // 設定 API 網址
       const url = 'https://01da5078501d.ngrok-free.app/api/users/User'; 
       
       console.log("正在呼叫 API:", url);
 
-      // 4. 組合要傳送的資料
+      // 組合要傳送的資料
       const payload = {
           id: user.id,             
           name: updatedData.name,   
       };
 
       const response = await fetch(url, {
-        method: 'POST', // ★ 配合後端改成 POST
+        method: 'POST', // 配合後端改成 POST
         headers: {
           'Content-Type': 'application/json',
           'Authorization': token ? `Bearer ${token}` : '' 
@@ -1084,12 +1084,10 @@ function App() {
       const result = await response.json();
 
       // 5. 判斷後端回傳結果
-      // 後端成功時回傳 code: "200"
       if (result.code === "200") {
         console.log("資料庫更新成功:", result);
 
         // A. 更新前端 React State
-        // 因為後端只回傳 name，我們手動把前端的資料更新
         const newUser = { ...user, ...updatedData }; 
         setUser(newUser);
 
@@ -1368,8 +1366,8 @@ function App() {
           place_name: e.place_name,
           start_time: e.start_time ? String(e.start_time).slice(0, 5) : '',
           end_time: e.end_time ? String(e.end_time).slice(0, 5) : '',
-          cost: e.actual_expense || e.planned_cost || 0, // 後端現在有 actual_expense
-          category: e.category || 'other' 
+          cost: e.expense || 0, 
+          category: e.category || '其他' 
         }));
 
         setAllEvents(formattedEvents);
@@ -1552,10 +1550,6 @@ function App() {
       const resData = await response.json();
       
       if (resData.code === "200" && resData.data) {
-        // ★★★ 關鍵修改在這裡 ★★★
-        // 後端給的是: { my_review: {...}, global_stat: {...} }
-        // 我們要在這裡把它「攤平」，讓 Modal 可以直接讀到 score, average_score
-        
         const myReview = resData.data.my_review || {};
         const globalStat = resData.data.global_stat || {};
 
