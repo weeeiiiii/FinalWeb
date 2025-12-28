@@ -270,11 +270,15 @@ const PlaceDetailsModal = ({ place, onGetReview, onSaveReview, onClose }) => {
                 {[1, 2, 3, 4, 5].map((star) => (
                   <span 
                     key={star} 
-                    onClick={() => setRating(star)}
+                    onClick={() => {
+                    // 如果點擊的這顆星剛好等於目前的分數，代表想取消 -> 設為 0
+                    setRating(star === rating ? 0 : star);
+                  }}
                     style={{
                       fontSize: '2rem', 
                       color: star <= rating ? '#FFD700' : '#ddd', 
-                      transition: 'color 0.2s'
+                      transition: 'color 0.2s',
+                      userSelect: 'none'
                     }}
                   >
                     ★
@@ -309,64 +313,149 @@ const PlaceDetailsModal = ({ place, onGetReview, onSaveReview, onClose }) => {
 };
 
 // 開銷頁面
-const ExpensesPage = ({ trips, allEvents }) => {
+const ExpensesPage = ({ trips }) => { 
   const [selectedTripId, setSelectedTripId] = useState(trips.length > 0 ? trips[0].id : null);
-  const currentTrip = trips.find(t => t.id === parseInt(selectedTripId));
-  const tripEvents = allEvents.filter(e => e.trip_id === parseInt(selectedTripId));
-  const totalSpent = tripEvents.reduce((sum, e) => sum + (e.cost || 0), 0);
-  const budget = currentTrip ? currentTrip.details.total_budget : 0;
-  const percentage = budget > 0 ? Math.min((totalSpent / budget) * 100, 100) : 0;
   
-  const stats = {};
-  Object.keys(EXPENSE_CATEGORIES).forEach(key => stats[key] = 0);
-  tripEvents.forEach(e => {
-    if (e.cost && e.category && stats[e.category] !== undefined) stats[e.category] += e.cost;
-    else if (e.cost) stats['other'] += e.cost;
+  const [stats, setStats] = useState({
+    totalSpent: 0,
+    categorySummaries: [] 
+  });
+  
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if ((!selectedTripId || !trips.find(t => t.id === parseInt(selectedTripId))) && trips.length > 0) {
+      setSelectedTripId(trips[0].id);
+    }
+  }, [trips, selectedTripId]);
+
+
+  // 取得目前選到的行程基本資料
+  const currentTrip = trips.find(t => t.id === parseInt(selectedTripId));
+
+  // 當選擇的 Trip 改變時，呼叫後端 API 取得最新統計
+  useEffect(() => {
+    if (!selectedTripId) return;
+
+    const fetchStats = async () => {
+      setIsLoading(true);
+      try {
+        const response = await fetch(`${API_HOST}/api/trips/${selectedTripId}/events`, {
+           headers: { "ngrok-skip-browser-warning": "true" }
+        });
+        const resData = await response.json();
+        
+        if (resData.code === "200" && resData.data) {
+          setStats({
+            totalSpent: Number(resData.data.total_spent) || 0,
+            categorySummaries: (resData.data.category_summaries || []).map(item => ({
+              ...item,
+              total_amount: Number(item.total_amount) || 0
+            }))
+          });
+        }
+      } catch (e) {
+        console.error("讀取開銷失敗", e);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchStats();
+  }, [selectedTripId]); 
+
+  // 計算預算百分比
+  const budget = currentTrip ? Number(currentTrip.details?.total_budget) || 0 : 0;
+  const percentage = budget > 0 ? Math.min((Number(stats.totalSpent) / budget) * 100, 100) : 0;
+
+  const categoryChartData = Object.entries(EXPENSE_CATEGORIES).map(([key, info]) => {
+    const found = stats.categorySummaries.find(item => item.category === key);
+    const amount = found ? Number(found.total_amount) : 0;
+    
+    return {
+      key: key,
+      label: info.label,
+      color: info.color,
+      amount: amount
+    };
   });
 
-  if (!currentTrip) return <div className="container">請先建立行程</div>;
+  if (trips.length === 0) {
+     return <div className="container" style={{padding:'40px', textAlign:'center', color:'#999'}}>載入行程中...</div>;
+  }
+
+  if (!currentTrip) {
+     return <div className="container" style={{padding:'40px', textAlign:'center'}}>請先建立行程</div>;
+  }
 
   return (
     <div className="container">
       <h2 style={{borderLeft:'5px solid #333', paddingLeft:'15px'}}>EXPENSE</h2>
+      
       <div style={{marginBottom:'20px'}}>
         <label style={{marginRight:'10px', fontWeight:'bold'}}>選擇行程：</label>
-        <select value={selectedTripId} onChange={(e) => setSelectedTripId(e.target.value)} style={{padding:'8px', fontSize:'1rem', borderRadius:'4px', border:'1px solid #ddd'}}>
+        <select 
+          value={selectedTripId} 
+          onChange={(e) => setSelectedTripId(e.target.value)} 
+          style={{padding:'8px', fontSize:'1rem', borderRadius:'4px', border:'1px solid #ddd'}}
+        >
           {trips.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
         </select>
       </div>
-      <div style={{background:'white', padding:'30px', borderRadius:'12px', boxShadow:'0 5px 15px rgba(0,0,0,0.05)', marginBottom:'30px'}}>
-        <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-end', marginBottom:'10px'}}>
-          <div>
-            <h3 style={{margin:0, color:'#666'}}>總花費 / 預算</h3>
-            <div style={{fontSize:'2.5rem', fontWeight:'bold', color:'#333'}}>${totalSpent.toLocaleString()} <span style={{fontSize:'1rem', color:'#999'}}>/ ${parseInt(budget).toLocaleString()}</span></div>
-          </div>
-          <div style={{textAlign:'right'}}>
-            <div style={{fontWeight:'bold', color: totalSpent > budget ? '#e74c3c' : '#27ae60'}}>{totalSpent > budget ? '🆘 爆預算啦' : '✅ 預算內'}</div>
-          </div>
-        </div>
-        <div style={{height:'10px', background:'#eee', borderRadius:'5px', overflow:'hidden'}}>
-          <div style={{width: `${percentage}%`, height:'100%', background: totalSpent > budget ? '#e74c3c' : '#27ae60', transition:'width 0.5s'}}></div>
-        </div>
-      </div>
-      <h3>花費類別分析</h3>
-      <div style={{background:'white', padding:'20px', borderRadius:'12px', boxShadow:'0 2px 5px rgba(0,0,0,0.05)'}}>
-        {Object.entries(EXPENSE_CATEGORIES).map(([key, info]) => {
-          const amount = stats[key];
-          const barPercent = totalSpent > 0 ? (amount / totalSpent) * 100 : 0;
-          return (
-            <div key={key} style={{marginBottom:'15px'}}>
-              <div style={{display:'flex', justifyContent:'space-between', fontSize:'0.9rem', marginBottom:'5px'}}>
-                <span>{info.label}</span>
-                <span>${amount.toLocaleString()} ({Math.round(barPercent)}%)</span>
+
+      {isLoading ? (
+        <div style={{textAlign:'center', padding:'40px', color:'#999'}}>載入數據中...</div>
+      ) : (
+        <>
+          <div style={{background:'white', padding:'30px', borderRadius:'12px', boxShadow:'0 5px 15px rgba(0,0,0,0.05)', marginBottom:'30px'}}>
+            <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-end', marginBottom:'10px'}}>
+              <div>
+                <h3 style={{margin:0, color:'#666'}}>總花費 / 預算</h3>
+                <div style={{fontSize:'2.5rem', fontWeight:'bold', color:'#333'}}>
+                  ${Number(stats.totalSpent).toLocaleString()} 
+                  <span style={{fontSize:'1rem', color:'#999'}}> / ${Number(budget).toLocaleString()}</span>
+                </div>
               </div>
-              <div style={{height:'8px', background:'#f5f5f5', borderRadius:'4px', overflow:'hidden'}}>
-                <div style={{width: `${barPercent}%`, height:'100%', background: info.color}}></div>
+              <div style={{textAlign:'right'}}>
+                <div style={{fontWeight:'bold', color: stats.totalSpent > budget ? '#e74c3c' : '#27ae60'}}>
+                  {stats.totalSpent > budget ? '🆘 爆預算啦' : '✅ 預算內'}
+                </div>
               </div>
             </div>
-          );
-        })}
-      </div>
+            
+            <div style={{height:'10px', background:'#eee', borderRadius:'5px', overflow:'hidden'}}>
+              <div style={{
+                width: `${percentage}%`, 
+                height:'100%', 
+                background: stats.totalSpent > budget ? '#e74c3c' : '#27ae60', 
+                transition:'width 0.5s'
+              }}></div>
+            </div>
+          </div>
+
+          <h3>花費類別統計</h3>
+          <div style={{background:'white', padding:'20px', borderRadius:'12px', boxShadow:'0 2px 5px rgba(0,0,0,0.05)'}}>
+            {categoryChartData.map((item) => {
+              const barPercent = stats.totalSpent > 0 ? (item.amount / stats.totalSpent) * 100 : 0;
+              
+              return (
+                <div key={item.key} style={{marginBottom:'15px'}}>
+                  <div style={{display:'flex', justifyContent:'space-between', fontSize:'0.9rem', marginBottom:'5px'}}>
+                    <span style={{display:'flex', alignItems:'center', gap:'5px'}}>
+                      <span style={{width:'10px', height:'10px', borderRadius:'50%', background: item.color}}></span>
+                      {item.label}
+                    </span>
+                    <span>${Number(item.amount).toLocaleString()} ({Math.round(barPercent)}%)</span>
+                  </div>
+                  <div style={{height:'8px', background:'#f5f5f5', borderRadius:'4px', overflow:'hidden'}}>
+                    <div style={{width: `${barPercent}%`, height:'100%', background: item.color, transition:'width 0.5s'}}></div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 };
@@ -601,7 +690,6 @@ const TripPlanner = ({ trip, onBack, onUpdateTrip, onDeleteTrip, allEvents = [],
     }
   }, [currentDay, trip.id]);
 
-  // ★★★ 補上：日期計算函式 (原本你的程式碼缺了這段會報錯) ★★★
   const getDaysArray = (s, e) => {
     try {
       if (!s || !e) return [1];
@@ -801,8 +889,119 @@ const TripPlanner = ({ trip, onBack, onUpdateTrip, onDeleteTrip, allEvents = [],
   );
 };
 
-// 主程式
+// SQL 控制台
+const SQLPage = () => {
+  const [query, setQuery] = useState(''); 
+  const [results, setResults] = useState([]);
+  const [message, setMessage] = useState(''); 
+  const [error, setError] = useState('');  
+  const [isLoading, setIsLoading] = useState(false);
 
+  const handleExecute = async () => {
+    setIsLoading(true);
+    setResults([]);
+    setMessage('');
+    setError('');
+
+    try {
+      const response = await fetch(`${API_HOST}/api/admin/sql`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          "ngrok-skip-browser-warning": "true" 
+        },
+        body: JSON.stringify({ query: query })
+      });
+
+      const resData = await response.json();
+
+      if (resData.code === "200") {
+        if (resData.type === 'query') {
+          setResults(resData.data);
+          setMessage(`查詢成功，共找到 ${resData.data.length} 筆資料`);
+        } else {
+          setMessage(resData.message);
+        }
+      } else {
+        setError(resData.message || resData.error || '執行失敗');
+      }
+    } catch (err) {
+      setError("連線錯誤：" + err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="container" style={{maxWidth: '1000px'}}>
+      <h2 style={{borderLeft:'5px solid #040303ff', paddingLeft:'15px', color: '#060606ff'}}>
+        SQL 資料庫後台
+      </h2>
+
+      <div style={{background:'white', padding:'20px', borderRadius:'12px', boxShadow:'0 2px 10px rgba(0,0,0,0.1)', marginBottom:'30px'}}>
+        <textarea 
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="請輸入 SQL 語法"
+          rows="4"
+          style={{
+            width: '100%', padding: '15px', fontSize: '1.1rem', fontFamily: 'monospace',
+            borderRadius: '8px', border: '1px solid #ddd', background: '#2d3436', color: '#f7f6f5ff',
+            resize: 'vertical'
+          }}
+        />
+        <div style={{display:'flex', justifyContent:'flex-end', marginTop:'10px'}}>
+           <button 
+             className="btn-primary" 
+             onClick={handleExecute} 
+             disabled={isLoading}
+             style={{background: isLoading ? '#ffffffff' : '#000000bc'}}
+           >
+             {isLoading ? '執行中...' : '執行 SQL'}
+           </button>
+        </div>
+      </div>
+
+      {error && (
+        <div style={{padding:'15px', background:'#fadbd8', color:'#c0392b', borderRadius:'8px', marginBottom:'20px', border:'1px solid #e6b0aa'}}>
+          <strong>錯誤：</strong> {error}
+        </div>
+      )}
+      {message && !error && (
+        <div style={{padding:'15px', background:'#d4efdf', color:'#1e8449', borderRadius:'8px', marginBottom:'20px', border:'1px solid #a9dfbf'}}>
+          <strong>系統訊息：</strong> {message}
+        </div>
+      )}
+
+      {results.length > 0 && (
+        <div style={{overflowX: 'auto', background:'white', borderRadius:'12px', boxShadow:'0 2px 10px rgba(0,0,0,0.05)'}}>
+          <table style={{width:'100%', borderCollapse:'collapse', minWidth:'600px'}}>
+            <thead>
+              <tr style={{background:'#f8f9fa', borderBottom:'2px solid #ddd'}}>
+                {Object.keys(results[0]).map(key => (
+                  <th key={key} style={{padding:'12px 15px', textAlign:'left', color:'#555', fontSize:'0.9rem'}}>{key}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {results.map((row, index) => (
+                <tr key={index} style={{borderBottom:'1px solid #eee'}}>
+                  {Object.values(row).map((val, i) => (
+                    <td key={i} style={{padding:'12px 15px', color:'#333', fontFamily:'monospace'}}>
+                      {typeof val === 'object' && val !== null ? JSON.stringify(val) : String(val)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// 主程式
 function App() {
   const [activeTab, setActiveTab] = useState(() => {
   // 嘗試讀取上次停留的分頁，如果沒有就預設回 HOME
@@ -1158,8 +1357,11 @@ function App() {
 
       const resData = await response.json();
 
-      if (resData.code === "200" && Array.isArray(resData.data)) {
-        const formattedEvents = resData.data.map(e => ({
+      if (resData.code === "200" && resData.data && Array.isArray(resData.data.events)) {
+        // ★★★ 修改重點：從 resData.data.events 拿陣列，而不是直接拿 resData.data
+        const backendEvents = resData.data.events;
+
+        const formattedEvents = backendEvents.map(e => ({
           id: e.id,
           trip_id: e.Trips_id,
           day_no: e.day_no,
@@ -1167,14 +1369,14 @@ function App() {
           place_name: e.place_name,
           start_time: e.start_time ? String(e.start_time).slice(0, 5) : '',
           end_time: e.end_time ? String(e.end_time).slice(0, 5) : '',
-          cost: e.planned_cost || 0,
+          cost: e.actual_expense || e.planned_cost || 0, // 後端現在有 actual_expense
           category: e.category || 'other' 
         }));
 
         setAllEvents(formattedEvents);
         console.log("活動列表載入完成:", formattedEvents); 
-        }else {
-        console.warn("後端回傳資料為空或失敗:", resData);
+      } else {
+        console.warn("後端回傳資料格式不符:", resData);
         setAllEvents([]);
       }
     } catch (error) {
@@ -1401,6 +1603,7 @@ function App() {
             <button className={`nav-item ${activeTab==='FAVORITES'?'active':''}`} onClick={()=>{setActiveTab('FAVORITES'); setPlanningTrip(null);}}>精選</button>
             <button className={`nav-item ${activeTab==='EXPENSES'?'active':''}`} onClick={()=>{setActiveTab('EXPENSES'); setPlanningTrip(null);}}>開銷</button>
             <button className={`nav-item ${activeTab==='PROFILE'?'active':''}`} onClick={()=>{setActiveTab('PROFILE'); setPlanningTrip(null);}}>使用者</button>
+            <button className={`nav-item ${activeTab==='SQL'?'active':''}`} onClick={()=>{setActiveTab('SQL'); setPlanningTrip(null);}}>DB後台</button>
           </div>
         
           <button onClick={handleLogout} style={{position:'absolute', right:'20px', background:'none', border:'none', cursor:'pointer', color:'#999', fontSize:'0.8rem'}}>
@@ -1444,6 +1647,8 @@ function App() {
                 onNavigateToFavorites={() => setActiveTab('FAVORITES')} 
               />
             )}
+
+            {activeTab === 'SQL' && <SQLPage />}
           </>
         )}
       </div>
