@@ -5,6 +5,27 @@ import { tripsData, eventsData as initialEvents, placesData, currentUser as init
 
 const API_HOST = "https://01da5078501d.ngrok-free.app";
 
+// ★★★ 新增這個函式：專門處理時間字串，補零且去除秒數
+const formatTimeStr = (timeStr) => {
+  if (!timeStr) return '';
+  // 1. 先把字串轉成字串 (防呆)
+  const str = String(timeStr).trim();
+  
+  // 2. 如果包含 'T' (例如 ISO 格式)，先切開拿後面
+  const timePart = str.includes('T') ? str.split('T')[1] : str;
+
+  // 3. 用冒號切開 (例如 "8:00:00" -> ["8", "00", "00"])
+  const parts = timePart.split(':');
+  
+  if (parts.length >= 2) {
+    // 取出時跟分，並自動補零 (padStart)
+    const hh = parts[0].padStart(2, '0'); // "8" -> "08"
+    const mm = parts[1].padStart(2, '0'); // "0" -> "00"
+    return `${hh}:${mm}`;
+  }
+  
+  return timePart; // 如果格式很怪就原樣回傳
+};
 
 // 使用 Date 物件來解析後端傳來的複雜時間格式 (GMT)
 const splitDateTime = (dtString) => {
@@ -156,6 +177,13 @@ const FavoritesPage = ({ places, favList, favorites, onToggleFavorite, onGetRevi
                       {isFav ? '❤️' : '🤍'}
                     </button>
                   </div>
+
+                   {(place.country || place.city) && (
+                    <div style={{marginTop:'8px', fontSize:'0.9rem', color:'#555', display:'flex', alignItems:'center', gap:'5px'}}>
+                       📍 {place.country || ''} {place.city ? `- ${place.city}` : ''}
+                    </div>
+                  )}   
+
                   <div style={{marginTop:'15px', fontSize:'0.85rem', color:'#888', display:'flex', alignItems:'center', gap:'5px'}}>
                      <span>📝 點擊查看評價與筆記</span>
                   </div>
@@ -406,10 +434,25 @@ const ExpensesPage = ({ trips }) => {
       ) : (
         <>
           <div style={{background:'white', padding:'30px', borderRadius:'12px', boxShadow:'0 5px 15px rgba(0,0,0,0.05)', marginBottom:'30px'}}>
-            <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-end', marginBottom:'10px'}}>
+            
+            {/* ★★★ 修改這裡：解決手機版文字擠壓問題 ★★★ */}
+            <div style={{
+                display:'flex', 
+                justifyContent:'space-between', 
+                alignItems:'flex-end', 
+                marginBottom:'10px',
+                flexWrap: 'wrap', // 1. 允許換行
+                gap: '10px'       // 2. 增加間距
+            }}>
               <div>
                 <h3 style={{margin:0, color:'#666'}}>總花費 / 預算</h3>
-                <div style={{fontSize:'2.5rem', fontWeight:'bold', color:'#333'}}>
+                <div style={{
+                    fontSize:'2rem', // 3. 字體稍微改小一點 (原本2.5rem) 以適應手機
+                    fontWeight:'bold', 
+                    color:'#333',
+                    lineHeight: '1.2',
+                    wordBreak: 'break-all' // 防止數字太長撐爆畫面
+                }}>
                   ${Number(stats.totalSpent).toLocaleString()} 
                   <span style={{fontSize:'1rem', color:'#999'}}> / ${Number(budget).toLocaleString()}</span>
                 </div>
@@ -575,6 +618,20 @@ const TripSetupModal = ({ initialData, onSave, onCancel }) => {
     budget: '', note: '' 
   });
 
+  // ★★★ 與 EventForm 一樣的強制樣式，解決手機跑版 ★★★
+  const inputStyle = {
+    width: '100%',
+    boxSizing: 'border-box',
+    height: '45px',
+    padding: '0 10px',
+    border: '1px solid #ddd',
+    borderRadius: '6px',
+    margin: 0,
+    fontSize: '16px',
+    backgroundColor: '#fff',
+    appearance: 'none',
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     onSave(formData);
@@ -585,38 +642,78 @@ const TripSetupModal = ({ initialData, onSave, onCancel }) => {
       <div className="modal-content">
         <h3>{initialData ? '編輯旅程資訊' : '建立新旅程'}</h3>
         <form onSubmit={handleSubmit}>
+          
           <div className="form-group">
             <label>行程名稱</label>
             <input 
               value={formData.title} 
               onChange={e => setFormData({...formData, title: e.target.value})} 
-              required placeholder="例如: 京都五日遊"
+              required 
+              placeholder="例如: 京都五日遊"
+              style={inputStyle}
             />
           </div>
-          <div className="form-group" style={{display:'flex', gap:'10px'}}>
-             <div style={{flex:1}}>
+
+          {/* 出發日期 / 時間 (Grid 排版) */}
+          <div className="form-group" style={{display:'grid', gridTemplateColumns:'1.4fr 1fr', gap:'25px'}}>
+             <div> 
                 <label>出發日期</label>
-                <input type="date" value={formData.start_date} onChange={e => setFormData({...formData, start_date: e.target.value})} required/>
+                <input 
+                  type="date" 
+                  value={formData.start_date} 
+                  onChange={e => setFormData({...formData, start_date: e.target.value})} 
+                  required
+                  style={inputStyle}
+                />
              </div>
-             <div style={{flex:1}}>
+             <div>
                 <label>時間</label>
-                <input type="time" value={formData.start_time} onChange={e => setFormData({...formData, start_time: e.target.value})} required/>
+                <input 
+                  type="time" 
+                  value={formData.start_time} 
+                  onChange={e => setFormData({...formData, start_time: e.target.value})} 
+                  required
+                  style={inputStyle}
+                />
              </div>
           </div>
-          <div className="form-group" style={{display:'flex', gap:'10px'}}>
-             <div style={{flex:1}}>
+
+          {/* 回程日期 / 時間 (Grid 排版) */}
+          <div className="form-group" style={{display:'grid', gridTemplateColumns:'1.4fr 1fr', gap:'25px'}}>
+             <div>
                 <label>回程日期</label>
-                <input type="date" value={formData.end_date} onChange={e => setFormData({...formData, end_date: e.target.value})} required/>
+                <input 
+                  type="date" 
+                  value={formData.end_date} 
+                  onChange={e => setFormData({...formData, end_date: e.target.value})} 
+                  required
+                  style={inputStyle}
+                />
              </div>
-             <div style={{flex:1}}>
+             <div>
                 <label>時間</label>
-                <input type="time" value={formData.end_time} onChange={e => setFormData({...formData, end_time: e.target.value})} required/>
+                <input 
+                  type="time" 
+                  value={formData.end_time} 
+                  onChange={e => setFormData({...formData, end_time: e.target.value})} 
+                  required
+                  style={inputStyle}
+                />
              </div>
           </div>
+
           <div className="form-group">
             <label>總預算</label>
-            <input type="number" value={formData.budget} onChange={e => setFormData({...formData, budget: e.target.value})} required placeholder="例如: 30000"/>
+            <input 
+              type="number" 
+              value={formData.budget} 
+              onChange={e => setFormData({...formData, budget: e.target.value})} 
+              required 
+              placeholder="例如: 30000"
+              style={inputStyle}
+            />
           </div>
+
           <div className="form-group">
             <label>備註</label>
             <textarea 
@@ -624,8 +721,11 @@ const TripSetupModal = ({ initialData, onSave, onCancel }) => {
               value={formData.note} 
               onChange={e => setFormData({...formData, note: e.target.value})} 
               placeholder="例如: 記得帶護照、訂網卡..."
+              // Textarea 高度設為 auto 讓它依據 rows 撐開，但其他樣式保持一致
+              style={{...inputStyle, height: 'auto', padding: '10px'}}
             />
           </div>
+
           <div className="modal-actions">
             <button type="button" onClick={onCancel} className="btn-secondary">取消</button>
             <button type="submit" className="btn-primary">儲存</button>
@@ -639,30 +739,112 @@ const TripSetupModal = ({ initialData, onSave, onCancel }) => {
 const EventForm = ({ tripId, currentDay, initialData, onSave, onCancel }) => {
   const [formData, setFormData] = useState(initialData || { title: '', place_name: '', start_time: '10:00', end_time: '12:00', cost: '', category: 'food' });
 
+  // ★★★ 關鍵修正：定義一個共用的樣式物件，強制統一所有輸入框的長相 ★★★
+  const inputStyle = {
+    width: '100%',              // 強制填滿格子
+    boxSizing: 'border-box',    // 確保 padding 不會撐大寬度 (這最重要！)
+    height: '45px',             // 固定高度，確保 input 和 select 一樣高
+    padding: '0 10px',          // 統一內距
+    border: '1px solid #ddd',   // 統一邊框
+    borderRadius: '6px',        // 統一圓角
+    margin: 0,                  // ★ 殺掉手機瀏覽器預設的外距
+    fontSize: '16px',           // 防止 iOS 自動放大
+    backgroundColor: '#fff',    // 統一背景色
+    appearance: 'none',         // (選用) 移除部分手機預設樣式
+  };
+
   return (
     <div className="modal-overlay" style={{zIndex: 1100}}>
       <div className="modal-content">
         <h3>{initialData ? '編輯活動' : '新增活動'}</h3>
         <form onSubmit={(e) => { e.preventDefault(); onSave({...formData, trip_id: tripId, day_no: currentDay}); }}>
-          <div className="form-group"><label>活動名稱</label><input value={formData.title} onChange={e=>setFormData({...formData, title:e.target.value})} required placeholder="例如: 吃一蘭拉麵"/></div>
-          <div className="form-group" style={{display:'flex', gap:'10px'}}>
-             <div style={{flex:1}}><label>開始</label><input type="time" value={formData.start_time} onChange={e=>setFormData({...formData, start_time:e.target.value})}/></div>
-             <div style={{flex:1}}><label>結束</label><input type="time" value={formData.end_time} onChange={e=>setFormData({...formData, end_time:e.target.value})}/></div>
+          
+          {/* 1. 活動名稱 */}
+          <div className="form-group">
+            <label>活動名稱</label>
+            <input 
+              value={formData.title} 
+              onChange={e=>setFormData({...formData, title:e.target.value})} 
+              required 
+              placeholder="例如: 吃一蘭拉麵"
+              style={inputStyle} // 套用共用樣式
+            />
           </div>
-          <div className="form-group"><label>地點</label><input value={formData.place_name} onChange={e=>setFormData({...formData, place_name:e.target.value})} required placeholder="例如: 新宿東口店"/></div>
-          <div className="form-group" style={{display:'flex', gap:'10px'}}>
-            <div style={{flex:1}}><label>花費金額 ($)</label><input type="number" value={formData.cost} onChange={e=>{
-              const val = e.target.value;
-              setFormData({...formData, cost: val === '' ? '' : parseInt(val, 10) || 0});
-            }}/></div>
-            <div style={{flex:1}}>
-              <label>消費類別</label>
-              <select value={formData.category} onChange={e=>setFormData({...formData, category:e.target.value})}>
-                {Object.entries(EXPENSE_CATEGORIES).map(([key, info]) => (<option key={key} value={key}>{info.label}</option>))}
-              </select>
+
+          {/* 2. 開始 / 結束時間 (Grid 排版) */}
+          <div className="form-group" style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'20px'}}>
+            <div>
+                <label>開始</label>
+                <input 
+                  type="time" 
+                  value={formData.start_time} 
+                  onChange={e=>setFormData({...formData, start_time:e.target.value})}
+                  style={inputStyle} // 套用共用樣式
+                />
+            </div>
+            <div>
+                <label>結束</label>
+                <input 
+                  type="time" 
+                  value={formData.end_time} 
+                  onChange={e=>setFormData({...formData, end_time:e.target.value})}
+                  style={inputStyle} // 套用共用樣式
+                />
             </div>
           </div>
-          <div className="modal-actions"><button type="button" onClick={onCancel} className="btn-secondary">取消</button><button type="submit" className="btn-primary">儲存</button></div>
+
+          {/* 3. 地點 */}
+          <div className="form-group">
+            <label>地點</label>
+            <input 
+              value={formData.place_name} 
+              onChange={e=>setFormData({...formData, place_name:e.target.value})} 
+              required 
+              placeholder="例如: 新宿東口店"
+              style={inputStyle} // 套用共用樣式
+            />
+          </div>
+
+          {/* 4. 金額 / 類別 (Grid 排版) */}
+          <div className="form-group" style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'20px'}}>
+            <div>
+              <label>花費金額 ($)</label>
+              <input 
+                type="number" 
+                value={formData.cost} 
+                onChange={e=>{
+                  const val = e.target.value;
+                  setFormData({...formData, cost: val === '' ? '' : parseInt(val, 10) || 0});
+                }}
+                style={inputStyle} // 套用共用樣式
+              />
+            </div>
+            <div>
+              <label>消費類別</label>
+              {/* Select 需要特別處理，因為 appearance:none 會把箭頭弄不見，這裡我們手動加回一點樣式 */}
+              <div style={{position: 'relative'}}>
+                <select 
+                  value={formData.category} 
+                  onChange={e=>setFormData({...formData, category:e.target.value})}
+                  style={{
+                    ...inputStyle, 
+                    appearance: 'none', // 移除預設箭頭
+                    backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23333%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")',
+                    backgroundRepeat: 'no-repeat',
+                    backgroundPosition: 'right 10px center',
+                    backgroundSize: '12px',
+                  }} 
+                >
+                  {Object.entries(EXPENSE_CATEGORIES).map(([key, info]) => (<option key={key} value={key}>{info.label}</option>))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="modal-actions">
+            <button type="button" onClick={onCancel} className="btn-secondary">取消</button>
+            <button type="submit" className="btn-primary">儲存</button>
+          </div>
         </form>
       </div>
     </div>
@@ -753,137 +935,164 @@ const TripPlanner = ({ trip, onBack, onUpdateTrip, onDeleteTrip, allEvents = [],
   // 安全取得預算
   const budget = parseInt(trip.details?.total_budget || 0);
 
-  return (
-    <div className="container" style={{paddingBottom:'100px'}}>
-      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px'}}>
-        <button className="btn-back" onClick={onBack} style={{margin:0}}>← 返回行程列表</button>
-        <div style={{display:'flex', gap:'10px'}}>
-          <button className="btn-secondary" onClick={() => setIsEditTripModalOpen(true)}>編輯行程</button>
-          <button className="btn-secondary" onClick={handleDeleteThisTrip} style={{color:'#e74c3c', borderColor:'#e74c3c'}}>刪除</button>
-        </div>
+return (
+  <div className="container" style={{paddingBottom:'100px'}}>
+    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px'}}>
+      <button className="btn-back" onClick={onBack} style={{margin:0}}>← 返回行程列表</button>
+      <div style={{display:'flex', gap:'10px'}}>
+        <button className="btn-secondary" onClick={() => setIsEditTripModalOpen(true)}>編輯行程</button>
+        <button className="btn-secondary" onClick={handleDeleteThisTrip} style={{color:'#e74c3c', borderColor:'#e74c3c'}}>刪除</button>
       </div>
+    </div>
 
-      <div style={{background:'white', padding:'25px', borderRadius:'12px', boxShadow:'0 2px 10px rgba(0,0,0,0.05)', marginBottom:'25px', border:'1px solid #eee'}}>
-        <h1 style={{margin:'0 0 15px 0', fontSize:'2rem'}}>{trip.title}</h1>
-        
-        <div style={{display:'flex', flexWrap:'wrap', gap:'30px', color:'#333', fontSize:'1rem', marginBottom:'20px'}}>
-          <div><strong>🗓️出發：</strong> {trip.start_date} {trip.start_time && <span style={{marginLeft:'10px'}}>{trip.start_time}</span>}</div>
-          <div><strong>回程：</strong> {trip.end_date} {trip.end_time && <span style={{marginLeft:'10px'}}>{trip.end_time}</span>}</div>
-        </div>
-
-        <div style={{background:'#f8f9fa', padding:'15px 20px', borderRadius:'8px', display:'inline-flex', alignItems:'center', gap:'20px', border:'1px solid #eee', marginBottom: '5px'}}>
-           <div style={{fontSize:'1rem'}}>總預算: <b style={{fontSize:'1.1rem'}}>${budget.toLocaleString()}</b></div>
-           <div style={{height:'20px', width:'1px', background:'#ccc'}}></div>
-           <div style={{fontSize:'1rem'}}>
-             目前花費: <b style={{fontSize:'1.1rem', color: totalSpent > budget ? '#e74c3c' : '#27ae60'}}>
-               ${totalSpent.toLocaleString()}
-             </b>
-           </div>
-        </div>
-
-        {trip.note && (
-          <div style={{marginTop:'5px', color:'#555', fontSize:'0.95rem', lineHeight:'1.6', borderTop:'1px dashed #eee', paddingTop:'5px'}}>
-            <strong style={{display:'block', marginBottom:'5px', color:'#333'}}>備註：</strong>
-            <div style={{whiteSpace: 'pre-line'}}>{trip.note}</div>
-          </div>
-        )}
-      </div>
-
-      <div style={{display:'flex', gap:'10px', overflowX:'auto', paddingBottom:'10px'}}>
-        {days.map(d => (
-          <button 
-            key={d} 
-            onClick={()=>setCurrentDay(d)} 
-            style={{
-              padding:'8px 20px', borderRadius:'20px', border:'none', cursor:'pointer', fontWeight:'500', whiteSpace: 'nowrap',
-              background: currentDay===d?'#222':'#e0e0e0', 
-              color: currentDay===d?'white':'#555'
-            }}
-          >
-            {getDayDateString(trip.start_date, d)} (Day {d})
-          </button>
-        ))}
-      </div>
-
-      <div style={{marginTop:'20px'}}>
-        <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'15px'}}>
-           <div style={{display:'flex', alignItems:'baseline', gap:'12px'}}>
-             <h3 style={{fontSize:'1.2rem', margin:0}}>Day {currentDay} 行程</h3>
-             <span style={{fontSize:'1.1rem', color:'#454444ff', fontWeight:'500', background:'#eeebebff', padding:'2px 8px', borderRadius:'4px'}}>
-               本日花費: ${dailySpent.toLocaleString()}
-             </span>
-           </div>
-           <button className="btn-primary" onClick={()=>{setEditingEvent(null); setIsEventFormOpen(true)}}>+ 新增活動</button>
-        </div>
-        
-        {dayEvents.length === 0 ? (
-          <div style={{textAlign:'center', padding:'40px', color:'#999', background:'white', borderRadius:'8px', border:'1px dashed #ddd'}}>
-            本日尚無行程，點擊右上方按鈕新增
-          </div>
-        ) : (
-          dayEvents.map(ev => {
-            const catConfig = EXPENSE_CATEGORIES[ev.category] || EXPENSE_CATEGORIES['other'];
-            
-            return (
-              <div key={ev.id} style={{display:'flex', background:'white', padding:'15px', marginBottom:'12px', borderRadius:'8px', borderLeft:`5px solid ${catConfig.color}`, boxShadow:'0 2px 4px rgba(0,0,0,0.05)', border:'1px solid #f0f0f0'}}>
-                <div style={{minWidth:'60px', fontWeight:'bold', color:'#333'}}>{ev.start_time}</div>
-                <div style={{flex:1}}>
-                  <b style={{fontSize:'1.05rem'}}>{ev.title}</b>
-                  <div style={{fontSize:'0.9rem', color:'#666', marginTop:'3px'}}>{ev.place_name}</div>
-                  <span style={{fontSize:'0.75rem', background:'#f4f4f4', padding:'3px 8px', borderRadius:'4px', color:'#666', marginTop:'5px', display:'inline-block'}}>
-                    {catConfig.label}
-                  </span>
-                </div>
-                <div style={{textAlign:'right', display:'flex', flexDirection:'column', justifyContent:'center'}}>
-                  <div style={{fontWeight:'bold', fontSize:'1.1rem'}}>
-                    {ev.cost ? `$${Number(ev.cost).toLocaleString()}` : ''}
-                  </div>
-                  <div style={{fontSize:'0.85rem', marginTop:'8px'}}>
-                    <span onClick={()=>{setEditingEvent(ev); setIsEventFormOpen(true);}} style={{cursor:'pointer', marginRight:'12px', color:'#555', textDecoration:'underline'}}>編輯</span>
-                    
-                    <span 
-                      onClick={(e)=>{
-                        e.stopPropagation(); 
-                        if(window.confirm('確定要刪除這個活動嗎？')) {
-                          onDeleteEvent(ev.id);
-                        }
-                      }} 
-                      style={{cursor:'pointer', color:'#e74c3c'}}
-                    >
-                      刪除
-                    </span>
-                  </div>
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
-
-      {isEventFormOpen && (
-        <EventForm 
-          tripId={trip.id} 
-          currentDay={currentDay} 
-          initialData={editingEvent} 
-          onSave={handleSaveEventWrapper} 
-          onCancel={()=>setIsEventFormOpen(false)}
-        />
-      )}
+    <div style={{background:'white', padding:'25px', borderRadius:'12px', boxShadow:'0 2px 10px rgba(0,0,0,0.05)', marginBottom:'25px', border:'1px solid #eee'}}>
+      <h1 style={{margin:'0 0 15px 0', fontSize:'2rem'}}>{trip.title}</h1>
       
-      {isEditTripModalOpen && (
-        <TripSetupModal 
-          initialData={{
-            title: trip.title,
-            start_date: trip.start_date, start_time: trip.start_time,
-            end_date: trip.end_date, end_time: trip.end_time,
-            budget: trip.details?.total_budget, 
-            note: trip.note
-          }}
-          onSave={(updatedData) => { onUpdateTrip(updatedData); setIsEditTripModalOpen(false); }}
-          onCancel={() => setIsEditTripModalOpen(false)}
-        />
+      <div style={{display:'flex', flexWrap:'wrap', gap:'30px', color:'#333', fontSize:'1rem', marginBottom:'20px'}}>
+        <div><strong>🗓️出發：</strong> {trip.start_date} {trip.start_time && <span style={{marginLeft:'10px'}}>{trip.start_time}</span>}</div>
+        <div><strong>回程：</strong> {trip.end_date} {trip.end_time && <span style={{marginLeft:'10px'}}>{trip.end_time}</span>}</div>
+      </div>
+
+      <div style={{background:'#f8f9fa', padding:'15px 20px', borderRadius:'8px', display:'inline-flex', alignItems:'center', gap:'20px', border:'1px solid #eee', marginBottom: '5px'}}>
+         <div style={{fontSize:'1rem'}}>總預算: <b style={{fontSize:'1.1rem'}}>${budget.toLocaleString()}</b></div>
+         <div style={{height:'20px', width:'1px', background:'#ccc'}}></div>
+         <div style={{fontSize:'1rem'}}>
+           目前花費: <b style={{fontSize:'1.1rem', color: totalSpent > budget ? '#e74c3c' : '#27ae60'}}>
+             ${totalSpent.toLocaleString()}
+           </b>
+         </div>
+      </div>
+
+      {trip.note && (
+        <div style={{marginTop:'5px', color:'#555', fontSize:'0.95rem', lineHeight:'1.6', borderTop:'1px dashed #eee', paddingTop:'5px'}}>
+          <strong style={{display:'block', marginBottom:'5px', color:'#333'}}>備註：</strong>
+          <div style={{whiteSpace: 'pre-line'}}>{trip.note}</div>
+        </div>
       )}
     </div>
+
+    <div style={{display:'flex', gap:'10px', overflowX:'auto', paddingBottom:'10px'}}>
+      {days.map(d => (
+        <button 
+          key={d} 
+          onClick={()=>setCurrentDay(d)} 
+          style={{
+            padding:'8px 20px', borderRadius:'20px', border:'none', cursor:'pointer', fontWeight:'500', whiteSpace: 'nowrap',
+            background: currentDay===d?'#222':'#e0e0e0', 
+            color: currentDay===d?'white':'#555'
+          }}
+        >
+          {getDayDateString(trip.start_date, d)} (Day {d})
+        </button>
+      ))}
+    </div>
+
+    <div style={{marginTop:'20px'}}>
+      {/* ★★★ 修改開始：解決手機版按鈕換行與黏在一起的問題 ★★★ */}
+      <div style={{
+        display:'flex', 
+        justifyContent:'space-between', 
+        alignItems:'center', 
+        marginBottom:'15px',
+        flexWrap: 'wrap',  // 允許換行
+        gap: '10px'        // 增加間距
+      }}>
+         <div style={{display:'flex', alignItems:'center', gap:'10px', flexWrap:'wrap'}}>
+           <h3 style={{fontSize:'1.2rem', margin:0, whiteSpace: 'nowrap'}}>Day {currentDay} 行程</h3>
+           <span style={{
+             fontSize:'0.95rem', // 調整字體大小
+             color:'#454444ff', 
+             fontWeight:'500', 
+             background:'#f1f1f1ff', 
+             padding:'4px 10px', 
+             borderRadius:'4px',
+             whiteSpace: 'nowrap' // 防止金額換行
+           }}>
+             本日花費: ${dailySpent.toLocaleString()}
+           </span>
+         </div>
+         
+         <button 
+           className="btn-primary" 
+           onClick={()=>{setEditingEvent(null); setIsEventFormOpen(true)}}
+           style={{
+             whiteSpace: 'nowrap', // 強制按鈕文字不換行
+             flexShrink: 0         // 防止按鈕被壓縮
+           }}
+         >
+           + 新增活動
+         </button>
+      </div>
+      {/* ★★★ 修改結束 ★★★ */}
+      
+      {dayEvents.length === 0 ? (
+        <div style={{textAlign:'center', padding:'40px', color:'#999', background:'white', borderRadius:'8px', border:'1px dashed #ddd'}}>
+          本日尚無行程，點擊右上方按鈕新增
+        </div>
+      ) : (
+        dayEvents.map(ev => {
+          const catConfig = EXPENSE_CATEGORIES[ev.category] || EXPENSE_CATEGORIES['other'];
+          
+          return (
+            <div key={ev.id} style={{display:'flex', background:'white', padding:'15px', marginBottom:'12px', borderRadius:'8px', borderLeft:`5px solid ${catConfig.color}`, boxShadow:'0 2px 4px rgba(0,0,0,0.05)', border:'1px solid #f0f0f0'}}>
+              <div style={{minWidth:'60px', fontWeight:'bold', color:'#333'}}>{ev.start_time}</div>
+              <div style={{flex:1}}>
+                <b style={{fontSize:'1.05rem'}}>{ev.title}</b>
+                <div style={{fontSize:'0.9rem', color:'#666', marginTop:'3px'}}>{ev.place_name}</div>
+                <span style={{fontSize:'0.75rem', background:'#f4f4f4', padding:'3px 8px', borderRadius:'4px', color:'#666', marginTop:'5px', display:'inline-block'}}>
+                  {catConfig.label}
+                </span>
+              </div>
+              <div style={{textAlign:'right', display:'flex', flexDirection:'column', justifyContent:'center'}}>
+                <div style={{fontWeight:'bold', fontSize:'1.1rem'}}>
+                  {ev.cost ? `$${Number(ev.cost).toLocaleString()}` : ''}
+                </div>
+                <div style={{fontSize:'0.85rem', marginTop:'8px'}}>
+                  <span onClick={()=>{setEditingEvent(ev); setIsEventFormOpen(true);}} style={{cursor:'pointer', marginRight:'12px', color:'#555', textDecoration:'underline'}}>編輯</span>
+                  
+                  <span 
+                    onClick={(e)=>{
+                      e.stopPropagation(); 
+                      if(window.confirm('確定要刪除這個活動嗎？')) {
+                        onDeleteEvent(ev.id);
+                      }
+                    }} 
+                    style={{cursor:'pointer', color:'#e74c3c'}}
+                  >
+                    刪除
+                  </span>
+                </div>
+              </div>
+            </div>
+          );
+        })
+      )}
+    </div>
+
+    {isEventFormOpen && (
+      <EventForm 
+        tripId={trip.id} 
+        currentDay={currentDay} 
+        initialData={editingEvent} 
+        onSave={handleSaveEventWrapper} 
+        onCancel={()=>setIsEventFormOpen(false)}
+      />
+    )}
+    
+    {isEditTripModalOpen && (
+      <TripSetupModal 
+        initialData={{
+          title: trip.title,
+          start_date: trip.start_date, start_time: trip.start_time,
+          end_date: trip.end_date, end_time: trip.end_time,
+          budget: trip.details?.total_budget, 
+          note: trip.note
+        }}
+        onSave={(updatedData) => { onUpdateTrip(updatedData); setIsEditTripModalOpen(false); }}
+        onCancel={() => setIsEditTripModalOpen(false)}
+      />
+    )}
+  </div>
   );
 };
 
@@ -1362,8 +1571,8 @@ function App() {
           day_no: e.day_no,
           title: e.title,
           place_name: e.place_name,
-          start_time: e.start_time ? String(e.start_time).slice(0, 5) : '',
-          end_time: e.end_time ? String(e.end_time).slice(0, 5) : '',
+          start_time: formatTimeStr(e.start_time),
+          end_time: formatTimeStr(e.end_time),
           cost: e.expense || 0, 
           category: e.category || '其他' 
         }));
@@ -1482,7 +1691,9 @@ function App() {
       if (resData.code === "200") {
         const mappedPlaces = resData.data.map(p => ({
           id: p.place_id,
-          name: p.name
+          name: p.name,
+          country: p.country,
+          city: p.city
         }));
         setPlaces(mappedPlaces);
       }
@@ -1511,7 +1722,9 @@ function App() {
         
         setFavList(rawData.map(item => ({
             id: item.place_id,
-            name: item.name
+            name: item.name,
+            country: item.country,
+            city: item.city
         })));
       }
     } catch (error) {
@@ -1608,11 +1821,10 @@ function App() {
             <button className={`nav-item ${activeTab==='EXPENSES'?'active':''}`} onClick={()=>{setActiveTab('EXPENSES'); setPlanningTrip(null);}}>開銷</button>
             <button className={`nav-item ${activeTab==='PROFILE'?'active':''}`} onClick={()=>{setActiveTab('PROFILE'); setPlanningTrip(null);}}>使用者</button>
             <button className={`nav-item ${activeTab==='SQL'?'active':''}`} onClick={()=>{setActiveTab('SQL'); setPlanningTrip(null);}}>DB後台</button>
+            <button onClick={handleLogout} className="nav-item btn-logout" style={{color:'#beb9b8ff'}}>
+              登出 ➔
+            </button>
           </div>
-        
-          <button onClick={handleLogout} style={{position:'absolute', right:'20px', background:'none', border:'none', cursor:'pointer', color:'#999', fontSize:'0.8rem'}}>
-            登出 ➔
-          </button>
         </nav>
 
         {planningTrip ? (
