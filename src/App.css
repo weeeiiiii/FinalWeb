@@ -269,3 +269,24 @@ html, body, #root { width: 100%; min-height: 100vh; }
   box-shadow: 0 20px 50px rgba(0,0,0,0.3);
   animation: slideIn 0.3s ease-out;
 }
+
+.online-counter-wrapper {
+  /* 手機版預設：讓它乖乖排在隊伍裡，不要浮起來 */
+  position: static; 
+  margin-right: 15px; /* 跟旁邊的按鈕保持距離 */
+  flex-shrink: 0;     /* 防止空間不夠時被壓扁 */
+  transform: none;    /* 手機版不需要垂直置中修正 */
+}
+
+/* 電腦版 (寬度大於 768px) */
+@media (min-width: 769px) {
+  .online-counter-wrapper {
+    /* 電腦版：強制固定在左上角 */
+    position: absolute;
+    left: 20px;
+    top: 50%;
+    transform: translateY(-50%); /* 垂直置中 */
+    margin-right: 0;
+    z-index: 10;
+  }
+}

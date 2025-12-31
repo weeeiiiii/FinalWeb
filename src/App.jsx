@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import LoginPage from './Login';
+import OnlineUsers from './OnlineUsers';
 import './App.css';
 import { tripsData, eventsData as initialEvents, placesData, currentUser as initialUser } from './ApiData';
 
@@ -1815,7 +1816,9 @@ function App() {
     ) : (
       <div>
         <nav className="navbar">
+        
           <div className="nav-menu">
+            <div className="online-counter-wrapper"> <OnlineUsers userId={user?.id} /></div>
             <button className={`nav-item ${activeTab==='HOME'?'active':''}`} onClick={()=>{setActiveTab('HOME'); setPlanningTrip(null);}}>首頁</button>
             <button className={`nav-item ${activeTab==='FAVORITES'?'active':''}`} onClick={()=>{setActiveTab('FAVORITES'); setPlanningTrip(null);}}>精選</button>
             <button className={`nav-item ${activeTab==='EXPENSES'?'active':''}`} onClick={()=>{setActiveTab('EXPENSES'); setPlanningTrip(null);}}>開銷</button>
