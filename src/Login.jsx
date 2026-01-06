@@ -119,7 +119,7 @@ const LoginPage = ({ onLogin }) => {
         <form onSubmit={handleSubmit}>
           {!isLoginMode && (
             <div className="form-group">
-              <label>暱稱</label>
+              <label>暱稱<span style={{color: 'red'}}>*</span></label>
               <input 
                 type="text" 
                 required 
@@ -131,7 +131,7 @@ const LoginPage = ({ onLogin }) => {
           )}
 
           <div className="form-group">
-            <label>Email</label>
+            <label>Email<span style={{color: 'red'}}>*</span></label>
             <input 
               type="email" 
               required 
@@ -142,7 +142,7 @@ const LoginPage = ({ onLogin }) => {
           </div>
 
           <div className="form-group">
-            <label>密碼</label>
+            <label>密碼<span style={{color: 'red'}}>*</span></label>
             <input 
               type="password" 
               required 

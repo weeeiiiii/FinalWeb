@@ -645,7 +645,7 @@ const TripSetupModal = ({ initialData, onSave, onCancel }) => {
         <form onSubmit={handleSubmit}>
           
           <div className="form-group">
-            <label>行程名稱</label>
+            <label>行程名稱<span style={{color: 'red'}}>*</span></label>
             <input 
               value={formData.title} 
               onChange={e => setFormData({...formData, title: e.target.value})} 
@@ -658,7 +658,7 @@ const TripSetupModal = ({ initialData, onSave, onCancel }) => {
           {/* 出發日期 / 時間 (Grid 排版) */}
           <div className="form-group" style={{display:'grid', gridTemplateColumns:'1.4fr 1fr', gap:'25px'}}>
              <div> 
-                <label>出發日期</label>
+                <label>出發日期<span style={{color: 'red'}}>*</span></label>
                 <input 
                   type="date" 
                   value={formData.start_date} 
@@ -668,7 +668,7 @@ const TripSetupModal = ({ initialData, onSave, onCancel }) => {
                 />
              </div>
              <div>
-                <label>時間</label>
+                <label>時間<span style={{color: 'red'}}>*</span></label>
                 <input 
                   type="time" 
                   value={formData.start_time} 
@@ -682,7 +682,7 @@ const TripSetupModal = ({ initialData, onSave, onCancel }) => {
           {/* 回程日期 / 時間 (Grid 排版) */}
           <div className="form-group" style={{display:'grid', gridTemplateColumns:'1.4fr 1fr', gap:'25px'}}>
              <div>
-                <label>回程日期</label>
+                <label>回程日期<span style={{color: 'red'}}>*</span></label>
                 <input 
                   type="date" 
                   value={formData.end_date} 
@@ -692,7 +692,7 @@ const TripSetupModal = ({ initialData, onSave, onCancel }) => {
                 />
              </div>
              <div>
-                <label>時間</label>
+                <label>時間<span style={{color: 'red'}}>*</span></label>
                 <input 
                   type="time" 
                   value={formData.end_time} 
@@ -704,7 +704,7 @@ const TripSetupModal = ({ initialData, onSave, onCancel }) => {
           </div>
 
           <div className="form-group">
-            <label>總預算</label>
+            <label>總預算<span style={{color: 'red'}}>*</span></label>
             <input 
               type="number" 
               value={formData.budget} 
@@ -762,7 +762,7 @@ const EventForm = ({ tripId, currentDay, initialData, onSave, onCancel }) => {
           
           {/* 1. 活動名稱 */}
           <div className="form-group">
-            <label>活動名稱</label>
+            <label>活動名稱<span style={{color: 'red'}}>*</span></label>
             <input 
               value={formData.title} 
               onChange={e=>setFormData({...formData, title:e.target.value})} 
@@ -775,7 +775,7 @@ const EventForm = ({ tripId, currentDay, initialData, onSave, onCancel }) => {
           {/* 2. 開始 / 結束時間 (Grid 排版) */}
           <div className="form-group" style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'20px'}}>
             <div>
-                <label>開始</label>
+                <label>開始<span style={{color: 'red'}}>*</span></label>
                 <input 
                   type="time" 
                   value={formData.start_time} 
@@ -784,7 +784,7 @@ const EventForm = ({ tripId, currentDay, initialData, onSave, onCancel }) => {
                 />
             </div>
             <div>
-                <label>結束</label>
+                <label>結束<span style={{color: 'red'}}>*</span></label>
                 <input 
                   type="time" 
                   value={formData.end_time} 
@@ -796,7 +796,7 @@ const EventForm = ({ tripId, currentDay, initialData, onSave, onCancel }) => {
 
           {/* 3. 地點 */}
           <div className="form-group">
-            <label>地點</label>
+            <label>地點<span style={{color: 'red'}}>*</span></label>
             <input 
               value={formData.place_name} 
               onChange={e=>setFormData({...formData, place_name:e.target.value})} 
